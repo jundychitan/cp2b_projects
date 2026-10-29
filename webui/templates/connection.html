@@ -1,0 +1,26 @@
+<!-- Connection Manager Tab -->
+<div class="card mt-3">
+  <div class="card-header"><h5>Connection Manager</h5></div>
+  <div class="card-body">
+    <div class="mb-3 row">
+      <label class="col-sm-3 col-form-label">Status</label>
+      <div class="col-sm-6">
+        <span id="connStatus" class="badge bg-secondary fs-6">Checking...</span>
+      </div>
+    </div>
+    <div class="mb-3 row">
+      <label class="col-sm-3 col-form-label">Script Path</label>
+      <div class="col-sm-6">
+        <span id="connScriptPath" class="form-text">/projects/tcp_client/connection_manager.py</span>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-sm-9">
+        <button class="btn btn-success admin-only" id="connStartBtn" onclick="startConnection()">Start</button>
+        <button class="btn btn-danger admin-only" id="connStopBtn" onclick="stopConnection()">Stop</button>
+        <button class="btn btn-warning admin-only" onclick="restartConnection()">Restart</button>
+        <button class="btn btn-outline-secondary" onclick="refreshConnectionStatus()">Refresh</button>
+      </div>
+    </div>
+  </div>
+</div>

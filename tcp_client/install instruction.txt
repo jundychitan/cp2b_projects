@@ -1,0 +1,4 @@
+systemctl status connection-manager   # check status
+systemctl restart connection-manager  # restart
+journalctl -u connection-manager -f   # view logs
+

@@ -1,0 +1,44 @@
+<!-- Live Meter Tab -->
+<div class="card mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">Live Meter</h5>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-primary btn-sm" id="readMetersBtn" onclick="readMeters()">Read Meters</button>
+      <div class="form-check form-check-inline mb-0">
+        <input class="form-check-input" type="checkbox" id="readLpCheck">
+        <label class="form-check-label" for="readLpCheck">Read LP</label>
+      </div>
+      <button class="btn btn-outline-secondary btn-sm" onclick="clearLiveMeter()">Clear</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <!-- Meter Data Table -->
+    <div class="table-responsive mb-3" style="max-height: 400px; overflow-y: auto;">
+      <table class="table table-bordered table-sm table-striped" id="liveMeterTable">
+        <thead class="table-dark sticky-top">
+          <tr>
+            <th>Meter ID</th>
+            <th>Date/Time</th>
+            <th>Vrms A</th>
+            <th>Vrms B</th>
+            <th>Vrms C</th>
+            <th>Irms A</th>
+            <th>Irms B</th>
+            <th>Irms C</th>
+            <th>Freq</th>
+            <th>Watt</th>
+            <th>Wh Total</th>
+          </tr>
+        </thead>
+        <tbody id="liveMeterBody">
+          <tr><td colspan="11" class="text-center text-muted">No data. Click "Read Meters" to start.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Script Output Frame -->
+    <h6>Script Output</h6>
+    <pre id="liveMeterOutput" class="border rounded p-2 bg-dark text-success"
+         style="height: 300px; overflow-y: auto; font-size: 12px; white-space: pre-wrap;">Waiting for command...</pre>
+  </div>
+</div>

@@ -1,0 +1,97 @@
+<!-- RTU Setting Tab -->
+<div class="card mt-3">
+  <div class="card-header"><h5>RTU Setting</h5></div>
+  <div class="card-body">
+    <!-- MAC Address (read-only) -->
+    <div class="mb-3 row">
+      <label class="col-sm-3 col-form-label">MAC Address</label>
+      <div class="col-sm-6">
+        <input type="text" class="form-control-plaintext" id="rtuMac" readonly value="--">
+      </div>
+    </div>
+
+    <!-- IP Method Toggle -->
+    <div class="mb-3 row">
+      <label class="col-sm-3 col-form-label">IP Method</label>
+      <div class="col-sm-6">
+        <div class="form-check form-check-inline mt-2">
+          <input class="form-check-input" type="radio" name="rtuMethod" id="rtuDhcp"
+                 value="auto" checked onchange="toggleRtuMethod()">
+          <label class="form-check-label" for="rtuDhcp">DHCP</label>
+        </div>
+        <div class="form-check form-check-inline mt-2">
+          <input class="form-check-input" type="radio" name="rtuMethod" id="rtuStatic"
+                 value="manual" onchange="toggleRtuMethod()">
+          <label class="form-check-label" for="rtuStatic">Static</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- IP Address -->
+    <div class="mb-3 row">
+      <label for="rtuIp" class="col-sm-3 col-form-label">IP Address</label>
+      <div class="col-sm-6">
+        <input type="text" class="form-control rtu-static-field" id="rtuIp"
+               placeholder="e.g. 192.168.1.100" disabled>
+      </div>
+    </div>
+
+    <!-- Subnet -->
+    <div class="mb-3 row">
+      <label for="rtuSubnet" class="col-sm-3 col-form-label">Subnet</label>
+      <div class="col-sm-6">
+        <input type="text" class="form-control rtu-static-field" id="rtuSubnet"
+               value="24" placeholder="e.g. 24" disabled>
+      </div>
+    </div>
+
+    <!-- Gateway -->
+    <div class="mb-3 row">
+      <label for="rtuGateway" class="col-sm-3 col-form-label">Gateway</label>
+      <div class="col-sm-6">
+        <input type="text" class="form-control rtu-static-field" id="rtuGateway"
+               placeholder="e.g. 192.168.1.1" disabled>
+      </div>
+    </div>
+
+    <!-- DNS Servers -->
+    <div class="mb-3 row">
+      <label for="rtuDns" class="col-sm-3 col-form-label">DNS Server(s)</label>
+      <div class="col-sm-6">
+        <input type="text" class="form-control rtu-static-field" id="rtuDns"
+               placeholder="e.g. 8.8.8.8, 8.8.4.4" disabled>
+        <small class="form-text text-muted">Comma-separated. Leave blank for DHCP-provided DNS.</small>
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <div class="col-sm-9 text-end">
+        <button class="btn btn-primary admin-only" onclick="saveRtuNetwork()">Save Network</button>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- Remote Server IP -->
+    <div class="mb-3 row">
+      <label for="rtuServerIp" class="col-sm-3 col-form-label">Remote Server IP</label>
+      <div class="col-sm-4">
+        <input type="text" class="form-control" id="rtuServerIp" placeholder="e.g. 10.0.0.1">
+      </div>
+      <div class="col-sm-2">
+        <button class="btn btn-primary admin-only" onclick="saveRtuServer()">Save</button>
+      </div>
+    </div>
+
+    <!-- Location -->
+    <div class="mb-3 row">
+      <label for="rtuLocation" class="col-sm-3 col-form-label">Location</label>
+      <div class="col-sm-4">
+        <input type="text" class="form-control" id="rtuLocation" placeholder="e.g. Building A">
+      </div>
+      <div class="col-sm-2">
+        <button class="btn btn-primary admin-only" onclick="saveRtuLocation()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>

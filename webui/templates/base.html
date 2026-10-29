@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMR Gateway</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+  <style>
+    body { padding-top: 70px; }
+    .tab-content { padding: 20px 0; }
+    .btn-action { margin-right: 5px; }
+    .readonly-hide { }
+    @media (max-width: 991.98px) {
+      body { padding-top: 60px; }
+      .navbar-nav-right { padding-top: 8px; }
+    }
+  </style>
+  <script>
+    // Apply saved theme immediately to prevent flash
+    (function() {
+      const saved = localStorage.getItem('amr-theme') || 'light';
+      document.documentElement.setAttribute('data-bs-theme', saved);
+    })();
+  </script>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center" href="/">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" height="36" class="me-2">
+        AMR Gateway
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarRight">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarRight">
+        <div class="ms-auto d-flex flex-wrap align-items-center gap-2 navbar-nav-right">
+          <span class="text-light">
+            {{ current_user.username }}
+            <span class="badge bg-{{ 'success' if current_user.is_admin else 'secondary' }}">
+              {{ current_user.role }}
+            </span>
+          </span>
+          <button class="btn btn-outline-light btn-sm" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">
+            &#9790;
+          </button>
+          <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
+            Change Password
+          </button>
+          <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger btn-sm">Logout</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container-fluid mt-3">
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- Status alert area -->
+    <div id="statusAlert" class="alert d-none" role="alert"></div>
+
+    <!-- Tab navigation -->
+    <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="lte-tab" data-bs-toggle="tab"
+                data-bs-target="#lte" type="button" role="tab">LTE Setting</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="rtu-tab" data-bs-toggle="tab"
+                data-bs-target="#rtu" type="button" role="tab">RTU Setting</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="amr-tab" data-bs-toggle="tab"
+                data-bs-target="#amr" type="button" role="tab">AMR Setting</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="livemeter-tab" data-bs-toggle="tab"
+                data-bs-target="#livemeter" type="button" role="tab">Live Meter</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="diagnostic-tab" data-bs-toggle="tab"
+                data-bs-target="#diagnostic" type="button" role="tab">Diagnostic</button>
+      </li>
+      <li class="nav-item admin-only" role="presentation">
+        <button class="nav-link text-danger" type="button" data-bs-toggle="modal"
+                data-bs-target="#rebootModal">Reboot</button>
+      </li>
+    </ul>
+
+    <!-- Tab content -->
+    <div class="tab-content" id="mainTabContent">
+      <div class="tab-pane fade show active" id="lte" role="tabpanel">
+        {% include 'lte.html' %}
+      </div>
+      <div class="tab-pane fade" id="rtu" role="tabpanel">
+        {% include 'rtu.html' %}
+      </div>
+      <div class="tab-pane fade" id="amr" role="tabpanel">
+        {% include 'amr.html' %}
+      </div>
+      <div class="tab-pane fade" id="livemeter" role="tabpanel">
+        {% include 'livemeter.html' %}
+      </div>
+      <div class="tab-pane fade" id="diagnostic" role="tabpanel">
+        {% include 'diagnostic.html' %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div class="modal fade" id="changePasswordModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Change Password</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="pwdAlert" class="alert d-none"></div>
+          <div class="mb-3">
+            <label for="oldPassword" class="form-label">Current Password</label>
+            <input type="password" class="form-control" id="oldPassword">
+          </div>
+          <div class="mb-3">
+            <label for="newPassword" class="form-label">New Password</label>
+            <input type="password" class="form-control" id="newPassword">
+          </div>
+          <div class="mb-3">
+            <label for="confirmPassword" class="form-label">Confirm New Password</label>
+            <input type="password" class="form-control" id="confirmPassword">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="changePassword()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reboot Confirmation Modal -->
+  <div class="modal fade" id="rebootModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title">Confirm Reboot</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>Are you sure you want to reboot the device?</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" onclick="rebootDevice()">Reboot Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pass user role to JS -->
+  <script>
+    const USER_ROLE = "{{ current_user.role }}";
+    const IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+  </script>
+  <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

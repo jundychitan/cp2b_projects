@@ -1,0 +1,80 @@
+<!-- AMR Setting Tab -->
+
+<!-- Auto Read Section -->
+<div class="card mt-3">
+  <div class="card-header"><h5>Auto Read</h5></div>
+  <div class="card-body">
+    <div class="mb-3 row">
+      <label class="col-sm-3 col-form-label">Auto Read</label>
+      <div class="col-sm-6">
+        <div class="form-check form-switch mt-2">
+          <input class="form-check-input admin-only" type="checkbox" id="autoReadEnable">
+          <label class="form-check-label" for="autoReadEnable" id="autoReadLabel">Disabled</label>
+        </div>
+      </div>
+    </div>
+    <div class="mb-3 row">
+      <label for="autoReadInterval" class="col-sm-3 col-form-label">Interval (minutes)</label>
+      <div class="col-sm-3">
+        <input type="number" class="form-control" id="autoReadInterval" value="30" min="1">
+      </div>
+    </div>
+    <div class="text-end">
+      <button class="btn btn-primary admin-only" onclick="saveAutoRead()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Meter Batch File Section -->
+<div class="card mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">Meter Batch File</h5>
+    <div>
+      <button class="btn btn-success btn-sm admin-only" onclick="addMeterRow()">Add</button>
+      <button class="btn btn-primary btn-sm admin-only" onclick="saveMeters()">Save</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm" id="meterTable">
+        <thead class="table-light">
+          <tr>
+            <th style="width:5%">#</th>
+            <th style="width:25%">Meter S/N</th>
+            <th style="width:30%">Meter Config File</th>
+            <th style="width:25%">Alternate Address</th>
+            <th style="width:15%" class="admin-only">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="meterTableBody">
+          <!-- Rows populated by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Config File Editor Section -->
+<div class="card mt-3">
+  <div class="card-header"><h5>Config File Editor</h5></div>
+  <div class="card-body">
+    <div class="mb-3 row">
+      <label for="cfgFileSelect" class="col-sm-2 col-form-label">Config File</label>
+      <div class="col-sm-4">
+        <select class="form-select" id="cfgFileSelect" onchange="loadConfigFile()">
+          <option value="">-- Select a file --</option>
+        </select>
+      </div>
+    </div>
+    <div class="mb-3">
+      <textarea class="form-control" id="cfgEditor" rows="15"
+                style="font-family: monospace; font-size: 13px;"
+                placeholder="Select a config file to edit..."></textarea>
+    </div>
+    <div class="text-end">
+      <button class="btn btn-primary admin-only" onclick="saveConfigFile()">Save</button>
+      <button class="btn btn-info admin-only" onclick="saveConfigFileAs()">Save As</button>
+      <button class="btn btn-danger admin-only" onclick="deleteConfigFile()">Delete</button>
+    </div>
+  </div>
+</div>

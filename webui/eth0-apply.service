@@ -1,0 +1,13 @@
+[Unit]
+Description=Apply Eth0 network settings on boot
+After=NetworkManager.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/bin/sleep 5
+ExecStart=/bin/bash -c 'nmcli con modify ETH0 connection.interface-name eth0 && nmcli con reload && nmcli con up ETH0'
+
+[Install]
+WantedBy=multi-user.target

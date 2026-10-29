@@ -1,0 +1,82 @@
+2026-06-02 22:52:08,412 [INFO] connection_manager: Connection Manager started
+2026-06-02 22:52:08,413 [INFO] connection_manager: MAC address: 8A:F8:15:7B:C1:EB
+2026-06-02 22:52:08,413 [INFO] connection_manager: Auto-connect enabled, connecting bridge...
+2026-06-02 22:52:08,415 [INFO] rs485_bridge: Bridge starting (local_mode=tcp)
+2026-06-02 22:52:08,416 [INFO] rs485_bridge: Connect requested — bridge thread started
+2026-06-02 22:52:08,417 [INFO] connection_manager: Bridge connected (auto)
+2026-06-02 22:52:08,419 [INFO] connection_manager: Check-in thread started (interval=30s)
+2026-06-02 22:52:08,430 [INFO] rs485_bridge: socat bridge: socat TCP:169.132.31.224:8001 TCP:127.0.0.1:22
+2026-06-02 22:52:08,443 [INFO] rs485_bridge: socat started (pid=28282)
+2026-06-02 22:52:08,466 [INFO] connection_manager: Web UI listening on 0.0.0.0:8080
+2026-06-02 22:52:08,467 [INFO] connection_manager: Serving on http://0.0.0.0:8080
+2026-06-02 22:52:09,233 [DEBUG] connection_manager: "GET / HTTP/1.1" 200 -
+2026-06-02 22:52:09,267 [DEBUG] connection_manager: "GET /api/config HTTP/1.1" 200 -
+2026-06-02 22:52:09,283 [DEBUG] connection_manager: "GET /api/status HTTP/1.1" 200 -
+2026-06-02 22:52:09,287 [DEBUG] connection_manager: "GET /api/log HTTP/1.1" 200 -
+2026-06-02 22:52:14,263 [DEBUG] connection_manager: "GET /api/log HTTP/1.1" 200 -
+2026-06-02 22:52:14,275 [DEBUG] connection_manager: "GET /api/status HTTP/1.1" 200 -
+2026-06-02 22:52:18,470 [INFO] connection_manager: Check-in failed: <urlopen error timed out>
+2026-06-02 22:52:24,950 [INFO] connection_manager: Check-in failed: <urlopen error timed out>
+2026-06-02 22:52:24,952 [DEBUG] connection_manager: "POST /api/checkin HTTP/1.1" 200 -
+2026-06-02 22:52:24,968 [DEBUG] connection_manager: "GET /api/log HTTP/1.1" 200 -
+2026-06-02 22:52:24,983 [DEBUG] connection_manager: "GET /api/status HTTP/1.1" 200 -
+2026-06-02 22:52:35,010 [INFO] connection_manager: Check-in failed: <urlopen error timed out>
+2026-06-02 22:52:35,012 [DEBUG] connection_manager: "POST /api/checkin HTTP/1.1" 200 -
+2026-06-02 22:52:35,023 [DEBUG] connection_manager: "GET / HTTP/1.1" 200 -
+2026-06-02 22:52:35,034 [DEBUG] connection_manager: "GET /api/log HTTP/1.1" 200 -
+2026-06-02 22:52:35,046 [DEBUG] connection_manager: "GET /api/status HTTP/1.1" 200 -
+2026-06-02 22:52:35,054 [DEBUG] connection_manager: "GET /api/config HTTP/1.1" 200 -
+2026-06-02 22:52:35,057 [DEBUG] connection_manager: "GET /api/status HTTP/1.1" 200 -
+2026-06-02 22:52:35,061 [DEBUG] connection_manager: "GET /api/log HTTP/1.1" 200 -
+2026-06-02 22:52:40,047 [DEBUG] connection_manager: "GET /api/status HTTP/1.1" 200 -
+2026-06-02 22:52:40,058 [DEBUG] connection_manager: "GET /api/log HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "/usr/lib/python3.4/socketserver.py", line 305, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib/python3.4/socketserver.py", line 331, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib/python3.4/socketserver.py", line 344, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib/python3.4/socketserver.py", line 669, in __init__
+    self.handle()
+  File "/usr/lib/python3.4/http/server.py", line 398, in handle
+    self.handle_one_request()
+  File "/usr/lib/python3.4/http/server.py", line 386, in handle_one_request
+    method()
+  File "/projects/tcp_client/connection_manager.py", line 586, in do_POST
+    _do_checkin()
+  File "/projects/tcp_client/connection_manager.py", line 162, in _do_checkin
+    resp = urlopen(req, timeout=10)
+  File "/usr/lib/python3.4/urllib/request.py", line 153, in urlopen
+    return opener.open(url, data, timeout)
+  File "/usr/lib/python3.4/urllib/request.py", line 455, in open
+    response = self._open(req, data)
+  File "/usr/lib/python3.4/urllib/request.py", line 473, in _open
+    '_open', req)
+  File "/usr/lib/python3.4/urllib/request.py", line 433, in _call_chain
+    result = func(*args)
+  File "/usr/lib/python3.4/urllib/request.py", line 1202, in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+  File "/usr/lib/python3.4/urllib/request.py", line 1174, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers)
+  File "/usr/lib/python3.4/http/client.py", line 1090, in request
+    self._send_request(method, url, body, headers)
+  File "/usr/lib/python3.4/http/client.py", line 1128, in _send_request
+    self.endheaders(body)
+  File "/usr/lib/python3.4/http/client.py", line 1086, in endheaders
+    self._send_output(message_body)
+  File "/usr/lib/python3.4/http/client.py", line 924, in _send_output
+    self.send(msg)
+  File "/usr/lib/python3.4/http/client.py", line 859, in send
+    self.connect()
+  File "/usr/lib/python3.4/http/client.py", line 836, in connect
+    self.timeout, self.source_address)
+2026-06-02 22:52:48,510 [WARNING] rs485_bridge: socat exited unexpectedly (code=130)
+2026-06-02 22:52:48,511 [INFO] rs485_bridge: Reconnecting in 5s...
+  File "/usr/lib/python3.4/socket.py", line 500, in create_connection
+    sock.connect(sa)
+KeyboardInterrupt
+2026-06-02 22:52:48,516 [DEBUG] connection_manager: "GET /api/log HTTP/1.1" 200 -
+2026-06-02 22:52:48,520 [DEBUG] connection_manager: "GET /api/status HTTP/1.1" 200 -
+2026-06-02 22:52:48,523 [DEBUG] connection_manager: "GET /api/log HTTP/1.1" 200 -
+2026-06-02 22:52:48,527 [DEBUG] connection_manager: "GET /api/status HTTP/1.1" 200 -

@@ -1,0 +1,20 @@
+Oct 28 21:46:22 cp2b connection-manager[3149]: Traceback (most recent call last):
+Oct 28 21:46:22 cp2b connection-manager[3149]:   File "/opt/tcp_client/connection_manager.py", line 754, in <module>
+Oct 28 21:46:22 cp2b connection-manager[3149]:     main()
+Oct 28 21:46:22 cp2b connection-manager[3149]:   File "/opt/tcp_client/connection_manager.py", line 696, in main
+Oct 28 21:46:22 cp2b connection-manager[3149]:     log_level = getattr(logging, APP.config.get("log_level", "INFO").upper(), logging.INFO)
+Oct 28 21:46:22 cp2b connection-manager[3149]:                         ^^^^^^^
+Oct 28 21:46:22 cp2b connection-manager[3149]: UnboundLocalError: cannot access local variable 'logging' where it is not associated with a value
+Oct 28 21:46:23 cp2b systemd[1]: connection-manager.service: Main process exited, code=exited, status=1/FAILURE
+Oct 28 21:46:23 cp2b systemd[1]: connection-manager.service: Failed with result 'exit-code'.
+Oct 28 21:46:28 cp2b systemd[1]: connection-manager.service: Scheduled restart job, restart counter is at 19.
+Oct 28 21:46:28 cp2b systemd[1]: Started connection-manager.service - RS485 TCP Client Connection Manager.
+Oct 28 21:46:28 cp2b connection-manager[3153]: Traceback (most recent call last):
+Oct 28 21:46:28 cp2b connection-manager[3153]:   File "/opt/tcp_client/connection_manager.py", line 754, in <module>
+Oct 28 21:46:28 cp2b connection-manager[3153]:     main()
+Oct 28 21:46:28 cp2b connection-manager[3153]:   File "/opt/tcp_client/connection_manager.py", line 696, in main
+Oct 28 21:46:28 cp2b connection-manager[3153]:     log_level = getattr(logging, APP.config.get("log_level", "INFO").upper(), logging.INFO)
+Oct 28 21:46:28 cp2b connection-manager[3153]:                         ^^^^^^^
+Oct 28 21:46:28 cp2b connection-manager[3153]: UnboundLocalError: cannot access local variable 'logging' where it is not associated with a value
+Oct 28 21:46:28 cp2b systemd[1]: connection-manager.service: Main process exited, code=exited, status=1/FAILURE
+Oct 28 21:46:29 cp2b systemd[1]: connection-manager.service: Failed with result 'exit-code'.

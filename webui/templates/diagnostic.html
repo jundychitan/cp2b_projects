@@ -1,0 +1,27 @@
+<!-- Diagnostic Tab -->
+<div class="card mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">Diagnostic</h5>
+    <button class="btn btn-outline-secondary btn-sm" onclick="clearDiagnostic()">Clear</button>
+  </div>
+  <div class="card-body">
+    <!-- Controls -->
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+      <div class="input-group" style="max-width: 350px;">
+        <input type="text" class="form-control form-control-sm" id="diagPingTarget"
+               value="yahoo.com" placeholder="IP or hostname">
+        <button class="btn btn-primary btn-sm" onclick="diagPing()">Ping</button>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="diagCheckDevices()">Check Devices</button>
+      <button class="btn btn-primary btn-sm" onclick="diagLteCheck()">LTE Check</button>
+      <button class="btn btn-primary btn-sm" onclick="diagRoutes()">Routes</button>
+      <button class="btn btn-primary btn-sm" onclick="diagCheckCM()">Check CM Status</button>
+      <button class="btn btn-primary btn-sm" onclick="diagPingLogs()">Ping Logs</button>
+      <button class="btn btn-primary btn-sm" onclick="diagRebootLogs()">Reboot Logs</button>
+    </div>
+
+    <!-- Output Frame -->
+    <pre id="diagOutput" class="border rounded p-2 bg-dark text-success"
+         style="height: 400px; overflow-y: auto; font-size: 12px; white-space: pre-wrap;">Waiting for command...</pre>
+  </div>
+</div>

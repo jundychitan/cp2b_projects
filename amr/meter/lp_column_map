@@ -1,0 +1,32 @@
+# LP Column Multiplier Map for ZMD402 meters
+# Format: col_index,multiplier,dp,suffix
+# col_index: 0-based CSV column (3 = first data column after #,DateTime,Status)
+# multiplier: raw_value * multiplier = display_value
+# dp: decimal places
+# suffix: unit suffix for header (omit for no unit)
+#
+# Sections: [MeterType_LPn] e.g. [B32_LP1], [B40_LP1]
+
+[B32_LP1]
+3,0.0001,4,kW
+4,0.0001,4,kWh
+5,0.0001,4,kvarh
+6,0.0001,4,kW
+7,0.0001,4,kWh
+8,0.0001,4,kvarh
+
+[B40_LP1]
+3,0.001,3,kW
+4,0.01,2,Wh
+5,0.01,2,varh
+6,0.001,3,kW
+7,0.01,2,Wh
+8,0.01,2,varh
+9,0.001,3,kW
+10,0.001,3,kvar
+
+[B40_LP2]
+3,0.1,1,V
+
+[B32_LP2]
+8,0.0001,4,kvarh

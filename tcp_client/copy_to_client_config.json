@@ -1,0 +1,32 @@
+{
+  "auto_connect": true,
+  "buffer_size": 4096,
+  "channel": {
+    "port_y_host": "0.0.0.0",
+    "port_y_port": 8007
+  },
+  "local_mode": "web",
+  "local_tcp": {
+    "host": "127.0.0.1",
+    "port": 22
+  },
+  "local_web": {
+    "host": "127.0.0.1",
+    "port": 8080
+  },
+  "log_level": "ERROR",
+  "reconnect_interval": 5,
+  "serial": {
+    "baudrate": 9600,
+    "bytesize": 8,
+    "parity": "N",
+    "port": "/dev/ttyS2",
+    "stopbits": 1,
+    "timeout": 0.1
+  },
+  "server": {
+    "host": "139.162.31.224",
+    "port": 8006
+  },
+  "use_socat": true
+}

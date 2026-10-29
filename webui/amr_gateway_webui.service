@@ -1,0 +1,14 @@
+[Unit]
+Description=AMR Gateway Web UI
+After=network.target NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/amr_gateway_webui
+ExecStart=/opt/amr_gateway_webui/venv/bin/gunicorn -w 2 -b 0.0.0.0:8080 --timeout 600 app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
