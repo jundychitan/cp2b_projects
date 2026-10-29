@@ -9,7 +9,7 @@ sudo apt install -y openssh-server
 sudo systemctl enable --now ssh
 
 # 4. Install connection-manager
-sudo ./intall.sh
+sudo ./intall.sh --install-dir /home/admin/projects/tcp_client
 
 systemctl status connection-manager   # check status
 systemctl restart connection-manager  # restart
