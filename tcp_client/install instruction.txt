@@ -1,3 +1,16 @@
+install ssh (for CP2B IOT Gateway)
+# 1. Update your package lists
+sudo apt update
+
+# 2. Install the OpenSSH server
+sudo apt install -y openssh-server
+
+# 3. Start and enable the service to run at boot
+sudo systemctl enable --now ssh
+
+# 4. Install connection-manager
+sudo ./intall.sh
+
 systemctl status connection-manager   # check status
 systemctl restart connection-manager  # restart
 journalctl -u connection-manager -f   # view logs
