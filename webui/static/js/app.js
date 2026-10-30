@@ -127,6 +127,11 @@ let lteStatusInterval = null;
 async function loadLteStatus() {
   const data = await apiGet('/api/lte/status');
   if (!data) return;
+
+  const simEl = document.getElementById('lteSimStatus');
+  simEl.value = data.sim_status || '--';
+  simEl.style.color = data.sim_status === 'Inserted' ? 'green' : 'red';
+
   document.getElementById('lteStatus').value = data.status || '--';
   document.getElementById('lteCarrier').value = data.carrier || '--';
   document.getElementById('lteAccess').value = data.access || '--';

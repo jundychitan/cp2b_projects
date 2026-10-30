@@ -62,16 +62,59 @@ def _parse_at_response(response, prefix):
     return ''
 
 
+def _get_watchdog_target():
+    """Get the first watchdog target IP for ping testing."""
+    try:
+        with open(WATCHDOG_TARGETS_FILE, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    # Strip http(s):// prefix if present — AT+QPING needs IP or hostname
+                    if '://' in line:
+                        line = line.split('://', 1)[1]
+                    # Strip trailing path
+                    line = line.split('/')[0]
+                    return line
+    except FileNotFoundError:
+        pass
+    return '8.8.8.8'
+
+
 @lte_bp.route('/api/lte/status')
 @login_required
 def get_status():
     """Get LTE modem status via AT commands."""
-    # Connection status
-    resp = _send_at('AT+QNETDEVCTL?')
-    status_line = _parse_at_response(resp, '+QNETDEVCTL:')
-    parts = [p.strip() for p in status_line.split(',')]
-    connected = parts[3] == '1' if len(parts) >= 4 else False
-    status = 'Connected' if connected else 'Disconnected'
+    # SIM status check first
+    resp = _send_at('AT+CPIN?')
+    cpin_line = _parse_at_response(resp, '+CPIN:')
+    if 'READY' in cpin_line:
+        sim_status = 'Inserted'
+    elif 'ERROR' in resp:
+        sim_status = 'Not Detected'
+    else:
+        sim_status = cpin_line or 'Not Detected'
+
+    # If SIM not inserted, skip the rest
+    if sim_status != 'Inserted':
+        return jsonify({
+            'sim_status': sim_status,
+            'status': '--',
+            'carrier': '--',
+            'access': '--',
+            'band': '--',
+            'signal': '--',
+        })
+
+    # Internet connection status via AT+QPING
+    ping_target = _get_watchdog_target()
+    resp = _send_at(f'AT+QPING=1,"{ping_target}",4,1', timeout=10)
+    # +QPING: 0,... means success; +QPING: 569,... or ERROR means failure
+    ping_result = _parse_at_response(resp, '+QPING:')
+    if ping_result:
+        ping_code = ping_result.split(',')[0].strip()
+        status = 'Connected' if ping_code == '0' else 'Disconnected'
+    else:
+        status = 'Disconnected'
 
     # Carrier
     resp = _send_at('AT+QSPN')
@@ -93,6 +136,7 @@ def get_status():
     signal = csq_parts[0] if csq_parts else ''
 
     return jsonify({
+        'sim_status': sim_status,
         'status': status,
         'carrier': carrier,
         'access': access,
