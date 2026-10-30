@@ -636,12 +636,6 @@ async function diagPingLogs() {
   if (data) appendDiagOutput(data.output);
 }
 
-async function diagRebootLogs() {
-  appendDiagOutput('> tail -n 100 /var/log/gpio_control.log\n');
-  const data = await apiPost('/api/diagnostic/reboot-logs', {});
-  if (data) appendDiagOutput(data.output);
-}
-
 function clearDiagnostic() {
   document.getElementById('diagOutput').textContent = 'Waiting for command...';
 }

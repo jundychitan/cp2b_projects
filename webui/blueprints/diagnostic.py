@@ -98,16 +98,6 @@ def ping_logs():
     return jsonify({'output': output, 'success': ok})
 
 
-@diagnostic_bp.route('/api/diagnostic/reboot-logs', methods=['POST'])
-@login_required
-def reboot_logs():
-    """Display gpio_control log."""
-    ok, out, err = _run('tail -n 100 /var/log/gpio_control.log')
-    output = out if out else err
-
-    return jsonify({'output': output, 'success': ok})
-
-
 @diagnostic_bp.route('/api/diagnostic/reboot', methods=['POST'])
 @login_required
 def reboot_device():
