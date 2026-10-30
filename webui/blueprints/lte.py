@@ -98,12 +98,19 @@ def get_status():
     if sim_status != 'Inserted':
         return jsonify({
             'sim_status': sim_status,
+            'ip_address': '--',
             'status': '--',
             'carrier': '--',
             'access': '--',
             'band': '--',
             'signal': '--',
         })
+
+    # IP address assigned to module
+    resp = _send_at('AT+CGPADDR=1')
+    addr_line = _parse_at_response(resp, '+CGPADDR:')
+    addr_parts = [p.strip().strip('"') for p in addr_line.split(',')]
+    ip_address = addr_parts[1] if len(addr_parts) >= 2 else ''
 
     # Internet connection status via AT+QPING
     ping_target = _get_watchdog_target()
@@ -137,6 +144,7 @@ def get_status():
 
     return jsonify({
         'sim_status': sim_status,
+        'ip_address': ip_address,
         'status': status,
         'carrier': carrier,
         'access': access,
