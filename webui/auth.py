@@ -7,7 +7,7 @@ import tempfile
 from functools import wraps
 from time import perf_counter
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -17,6 +17,15 @@ auth_bp = Blueprint('auth', __name__)
 login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
 login_manager.login_message_category = 'warning'
+
+
+@auth_bp.app_context_processor
+def password_reset_template_context():
+    def password_reset_csrf_token():
+        if 'password_reset_csrf_token' not in session:
+            session['password_reset_csrf_token'] = secrets.token_hex(32)
+        return session['password_reset_csrf_token']
+    return {'password_reset_csrf_token': password_reset_csrf_token}
 
 
 class User(UserMixin):
@@ -194,6 +203,33 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('auth.login'))
+
+
+@auth_bp.route('/api/auth/reset-password', methods=['POST'])
+@admin_required
+def reset_password():
+    """Allow admins to reset only the two built-in non-admin accounts."""
+    token = session.get('password_reset_csrf_token', '')
+    supplied = request.headers.get('X-CSRF-Token', '')
+    if not token or not secrets.compare_digest(token.encode(), supplied.encode()):
+        return jsonify({'error': 'Invalid CSRF token; reload the page and try again'}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or data.get('username') not in ('dec', 'amr'):
+        return jsonify({'error': 'Select dec or amr to reset'}), 400
+    username = data['username']
+    users = _load_users()
+    if username not in users:
+        return jsonify({'error': 'User not found; no account was created'}), 404
+    users[username]['password_hash'] = generate_password_hash('1234')
+    try:
+        _save_users(users)
+    except OSError:
+        return jsonify({'error': 'Unable to save the password reset; check user-store permissions'}), 500
+    response = jsonify({
+        'message': f'Password for {username} reset to 1234. Ask the user to change it after signing in.',
+    })
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @auth_bp.route('/api/auth/change-password', methods=['POST'])

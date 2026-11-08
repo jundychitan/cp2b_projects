@@ -91,6 +91,16 @@ All signed-in users can Refresh LTE and run LTE diagnostics when hardware is det
 
 > **Important:** Change the default passwords after first login.
 
+### Admin password reset
+
+Sign in as **admin**, select **Reset User Password** in the navbar, choose `dec`
+or `amr`, and confirm **Reset to 1234**. Both accounts reset to `1234`, including
+`amr` (whose fresh-install password remains `amr123`). Ask the user to change it
+after signing in. Reset affects only the selected password hash; roles, other
+accounts, and the session secret are preserved. Existing signed-in sessions are
+not logged out. Non-admin users cannot view the controls or use the reset API.
+The POST request requires a session token in `X-CSRF-Token`.
+
 ## Service Management
 
 ```bash
@@ -254,8 +264,9 @@ amr_gateway_webui/
 | GET    | `/rebooting`                    | public | Standalone reboot monitor       |
 | GET    | `/api/diagnostic/ready`         | public | Uncached readiness response     |
 | POST   | `/api/auth/change-password`     | any    | Change own password             |
+| POST   | `/api/auth/reset-password`      | admin + CSRF | Reset dec/amr to 1234       |
 
-Only reboot and Connection Manager toggle use the new session CSRF tokens;
+Reboot, Connection Manager toggle, and admin password reset use session CSRF tokens;
 this does not imply CSRF coverage for every legacy endpoint.
 
 ## Validation
@@ -268,6 +279,7 @@ node tests/test_connection_ui.js
 node tests/test_reboot_ui.js
 node tests/test_login_ui.js
 node tests/test_diagnostic_ui.js
+node tests/test_password_reset_ui.js
 ```
 
 Tests use temporary state and mocked hardware, package, and service operations.

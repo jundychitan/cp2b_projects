@@ -48,6 +48,12 @@
           <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
             Change Password
           </button>
+          {% if current_user.is_admin %}
+          <button type="button" class="btn btn-outline-warning btn-sm" id="resetUserPasswordMenu"
+                  data-bs-toggle="modal" data-bs-target="#resetUserPasswordModal">
+            Reset User Password
+          </button>
+          {% endif %}
           <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger btn-sm">Logout</a>
         </div>
       </div>
@@ -159,6 +165,11 @@
       </div>
     </div>
   </div>
+
+  {% if current_user.is_admin %}
+  {% include 'reset_password.html' %}
+  <script src="{{ url_for('static', filename='js/password_reset.js') }}" defer></script>
+  {% endif %}
 
   <!-- Reboot Confirmation Modal -->
   <div class="modal fade" id="rebootModal" tabindex="-1">
