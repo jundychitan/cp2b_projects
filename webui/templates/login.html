@@ -45,7 +45,7 @@
         {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('auth.login') }}">
+        <form method="POST" action="{{ url_for('auth.login') }}" id="loginForm">
           <div class="mb-3">
             <label for="username" class="form-label">Username</label>
             <input type="text" class="form-control" id="username" name="username"
@@ -56,11 +56,13 @@
             <input type="password" class="form-control" id="password" name="password"
                    required>
           </div>
-          <button type="submit" class="btn btn-primary w-100">Login</button>
+          <button type="submit" class="btn btn-primary w-100" id="loginButton">Login</button>
+          <p class="small text-muted mt-2 mb-0" id="loginProgress" role="status"></p>
         </form>
       </div>
     </div>
   </div>
   <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/login.js') }}"></script>
 </body>
 </html>

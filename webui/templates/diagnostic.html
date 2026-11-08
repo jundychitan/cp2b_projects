@@ -13,7 +13,8 @@
         <button class="btn btn-primary btn-sm" onclick="diagPing()">Ping</button>
       </div>
       <button class="btn btn-primary btn-sm" onclick="diagCheckDevices()">Check Devices</button>
-      <button class="btn btn-primary btn-sm" onclick="diagLteCheck()">LTE Check</button>
+      <button type="button" class="btn btn-primary btn-sm" id="diagLteCheckBtn"
+              onclick="diagLteCheck()" title="Checking LTE modem presence" disabled>LTE Check</button>
       <button class="btn btn-primary btn-sm" onclick="diagRoutes()">Routes</button>
       <button class="btn btn-primary btn-sm" onclick="diagCheckCM()">Check CM Status</button>
       <button class="btn btn-primary btn-sm" onclick="diagPingLogs()">Ping Logs</button>

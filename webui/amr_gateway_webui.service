@@ -6,7 +6,7 @@ After=network.target NetworkManager.service
 Type=simple
 User=root
 WorkingDirectory=/opt/amr_gateway_webui
-ExecStart=/opt/amr_gateway_webui/venv/bin/gunicorn -w 2 -b 0.0.0.0:8080 --timeout 600 app:app
+ExecStart=/opt/amr_gateway_webui/venv/bin/gunicorn -w 2 --worker-class gthread --threads 2 -b 0.0.0.0:8080 --timeout 600 app:app
 Restart=always
 RestartSec=5
 

@@ -65,6 +65,7 @@ detect_interface() {
 
     # Fallback: first non-lo interface
     for iface in /sys/class/net/*; do
+        [ -d "${iface}" ] || continue
         iface="$(basename "${iface}")"
         if [ "${iface}" != "lo" ]; then
             NET_INTERFACE="${iface}"
@@ -73,8 +74,8 @@ detect_interface() {
         fi
     done
 
-    log_warn "Could not auto-detect network interface, defaulting to eth0"
-    NET_INTERFACE="eth0"
+    log_error "Could not auto-detect network interface; specify --interface NAME"
+    exit 1
 }
 
 check_ubuntu() {
@@ -187,7 +188,7 @@ do_install() {
     # 1. System dependencies
     log_info "Checking system dependencies..."
     apt-get update -qq
-    apt-get install -y -qq python3 python3-pip python3-serial socat > /dev/null 2>&1
+    apt-get install -y -qq python3 python3-pip python3-serial socat openssh-client > /dev/null 2>&1
     log_info "System dependencies OK"
 
     # 2. Python dependencies
@@ -274,7 +275,9 @@ SyslogIdentifier=${APP_NAME}
 NoNewPrivileges=true
 ProtectSystem=strict
 ReadWritePaths=${INSTALL_DIR} ${LOG_DIR} ${PID_DIR}
-ProtectHome=$(echo "${INSTALL_DIR}" | grep -q '^/home' && echo 'false' || echo 'true')
+# Web-mode SSH needs read access to the service user's /root/.ssh keys.
+# Keep homes read-only unless the application itself is installed under /home.
+ProtectHome=$(case "${INSTALL_DIR}" in /home/*) printf 'false';; *) printf 'read-only';; esac)
 PrivateTmp=true
 
 [Install]

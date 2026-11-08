@@ -2,6 +2,59 @@
 
 A pair of Python scripts that allow remote access to RS485 energy meters (or other local endpoints) over TCP.
 
+## CP2B deployment on Ubuntu 24.04.4 LTS
+
+This directory is the client source; run installation and maintenance commands
+with sudo. The Ethernet default remains `eth0`, with `--interface` overrides
+supported. Existing `client_config.json` is preserved by the installer; the
+configuration template is not rewritten by this port.
+
+For the first deployment of these changes, rerun the installer from this source
+directory, specifying the **currently installed** directory and interface:
+
+```bash
+# First inspect the installed path and arguments.
+systemctl show connection-manager.service -p WorkingDirectory -p ExecStart --no-pager
+# Example only: substitute the path/interface shown above.
+sudo bash install.sh --install-dir /home/admin/projects/tcp_client --interface eth0
+sudo systemctl status connection-manager.service --no-pager
+```
+
+Do not choose a different installation path inadvertently. Running the installer
+enables and starts/restarts the service; if it should remain disabled, restore
+that state explicitly with `sudo systemctl disable --now connection-manager`.
+This requires a maintenance window because existing tunnels are interrupted.
+The web UI's admin-only Connection Manager controls operate this same unit
+regardless of its installed path.
+
+The installer includes OpenSSH client tools. The systemd service runs as root
+and now permits reading `/root/.ssh` for web-mode key authentication.
+For installations outside `/home`, home directories remain read-only in the
+service sandbox; `/home` installations retain the existing writable application
+exception. Other systemd hardening remains enabled.
+
+An admin user's SSH key is not automatically the service's root key. If key
+authentication has not already been configured, run
+`sudo -H bash setup_ssh_tunnel.sh <server-ip>` separately during provisioning.
+It may prompt for the remote root password; no keys are generated/copied by
+the installer. Existing SSH host-key verification behavior is unchanged by this port.
+
+Web-mode status stays **CONNECTING** until OpenSSH confirms remote forwarding;
+authentication alone is not treated as a successful tunnel. SSH uses batch mode,
+a connection timeout, and reports forwarding/authentication failures. Check-in
+and auto-connect logs describe a connection request, not guaranteed success.
+
+For later code-only updates, the existing `sudo bash update.sh` still detects
+the installed directory and preserves configuration. It does **not** regenerate
+the service unit or install dependencies, so it is insufficient for this first
+service-sandbox/OpenSSH update.
+
+Run the isolated regression tests from this directory with Python and pyserial:
+
+```bash
+python -m unittest discover -s . -p 'test_*.py' -v
+```
+
 ## Architecture
 
 ```

@@ -9,6 +9,7 @@ from blueprints.rtu import rtu_bp
 from blueprints.amr import amr_bp
 from blueprints.livemeter import livemeter_bp
 from blueprints.diagnostic import diagnostic_bp
+from blueprints.connection import connection_bp
 
 from flask import Flask
 
@@ -30,6 +31,7 @@ def create_app():
     app.register_blueprint(amr_bp)
     app.register_blueprint(livemeter_bp)
     app.register_blueprint(diagnostic_bp)
+    app.register_blueprint(connection_bp)
 
     # Root route - redirect to LTE tab (default)
     @app.route('/')

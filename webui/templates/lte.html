@@ -2,7 +2,12 @@
 <div class="card mt-3">
   <div class="card-header d-flex justify-content-between align-items-center">
     <h5 class="mb-0">LTE Setting</h5>
-    <button class="btn btn-danger btn-sm admin-only" onclick="rebootLte()">LTE Reboot</button>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-primary btn-sm" id="lteRefreshBtn"
+              onclick="refreshLteStatus()">Refresh</button>
+      <button type="button" class="btn btn-danger btn-sm manage-only" id="lteRebootBtn"
+              onclick="rebootLte()">LTE Reboot</button>
+    </div>
   </div>
   <div class="card-body">
     <div class="mb-2 row">
@@ -59,10 +64,10 @@
       <!-- Rows populated by JS -->
     </div>
     <div class="mt-2">
-      <button class="btn btn-success btn-sm admin-only" onclick="addWatchdogTarget()">Add Target</button>
+      <button class="btn btn-success btn-sm manage-only" onclick="addWatchdogTarget()">Add Target</button>
     </div>
     <div class="mt-3 text-end">
-      <button class="btn btn-primary admin-only" onclick="saveWatchdogTargets()">Save</button>
+      <button class="btn btn-primary manage-only" onclick="saveWatchdogTargets()">Save</button>
     </div>
   </div>
 </div>

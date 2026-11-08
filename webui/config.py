@@ -6,6 +6,7 @@ import os
 WORKING_DIR = '/home/admin/projects'
 CONFIG_FILE_DIR = os.path.join(WORKING_DIR, 'config_file')
 CP_CLIENT_DIR = os.path.join(WORKING_DIR, 'tcp_client')
+CONNECTION_MANAGER_SERVICE = 'connection-manager.service'
 AMR_BASE_DIR = os.path.join(WORKING_DIR,'amr')
 AMR_METER_DIR = os.path.join(AMR_BASE_DIR, 'meter')
 AMR_UPLOAD_DIR = os.path.join(AMR_BASE_DIR, 'upload')
@@ -28,7 +29,7 @@ LTE_SERIAL_PORT = '/dev/ttyUSB2'
 LTE_SERIAL_BAUD = 115200
 
 # Internet watchdog
-WATCHDOG_SCRIPT = '/projects/modem/internet-watchdog.sh'
+WATCHDOG_SCRIPT = os.path.join(WORKING_DIR, 'modem', 'internet-watchdog.sh')
 WATCHDOG_TARGETS_FILE = os.path.join(CONFIG_FILE_DIR, 'watchdog_targets.cfg')
 
 # Users file (relative to app working directory)

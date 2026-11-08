@@ -9,7 +9,7 @@ import subprocess
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
-from auth import admin_required
+from auth import manage_required
 from config import AMR_METER_DIR, AMR_UPLOAD_DIR, METER_BATCH_FILE, PROCESS_METERS_SCRIPT
 
 amr_bp = Blueprint('amr', __name__)
@@ -60,7 +60,7 @@ def get_autoread():
 
 
 @amr_bp.route('/api/amr/autoread', methods=['POST'])
-@admin_required
+@manage_required
 def set_autoread():
     """Enable/disable auto read in crontab."""
     data = request.get_json(silent=True) or {}
@@ -128,7 +128,7 @@ def get_meters():
 
 
 @amr_bp.route('/api/amr/meters', methods=['POST'])
-@admin_required
+@manage_required
 def save_meters():
     """Save meter batch list to CSV."""
     data = request.get_json(silent=True) or {}
@@ -203,7 +203,7 @@ def get_config(filename):
 
 
 @amr_bp.route('/api/amr/configs/<filename>', methods=['POST'])
-@admin_required
+@manage_required
 def save_config(filename):
     """Save (overwrite) a config file."""
     safe = _safe_filename(filename)
@@ -223,7 +223,7 @@ def save_config(filename):
 
 
 @amr_bp.route('/api/amr/configs', methods=['POST'])
-@admin_required
+@manage_required
 def save_config_as():
     """Save As: create a new config file."""
     data = request.get_json(silent=True) or {}
@@ -247,7 +247,7 @@ def save_config_as():
 
 
 @amr_bp.route('/api/amr/configs/<filename>', methods=['DELETE'])
-@admin_required
+@manage_required
 def delete_config(filename):
     """Delete a config file."""
     safe = _safe_filename(filename)

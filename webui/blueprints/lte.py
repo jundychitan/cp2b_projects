@@ -8,11 +8,25 @@ import serial
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
-from auth import admin_required
+from auth import manage_required
 from config import (LTE_SERIAL_PORT, LTE_SERIAL_BAUD,
                     WATCHDOG_SCRIPT, WATCHDOG_TARGETS_FILE, CONFIG_FILE_DIR)
 
 lte_bp = Blueprint('lte', __name__)
+
+
+def _modem_present():
+    return os.path.exists(LTE_SERIAL_PORT)
+
+
+def _unavailable_status(present):
+    return jsonify({
+        'present': present,
+        'available': False,
+        'status': 'Unavailable' if present else 'Not installed',
+        'sim_status': '', 'ip_address': '',
+        'carrier': '', 'access': '', 'band': '', 'signal': '',
+    })
 
 
 def _run(cmd):
@@ -28,6 +42,8 @@ def _run(cmd):
 
 def _send_at(command, timeout=3):
     """Send an AT command to the EC200A module and return the response."""
+    if not _modem_present():
+        return 'ERROR: LTE modem serial device is not present'
     try:
         ser = serial.Serial(
             port=LTE_SERIAL_PORT,
@@ -80,12 +96,25 @@ def _get_watchdog_target():
     return '8.8.8.8'
 
 
+@lte_bp.route('/api/lte/presence')
+@login_required
+def get_presence():
+    """Check device-node presence without opening or querying the serial port."""
+    response = jsonify({'present': _modem_present()})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @lte_bp.route('/api/lte/status')
 @login_required
 def get_status():
     """Get LTE modem status via AT commands."""
+    if not _modem_present():
+        return _unavailable_status(False)
     # SIM status check first
     resp = _send_at('AT+CPIN?')
+    if not resp or 'ERROR' in resp or 'OK' not in resp:
+        return _unavailable_status(_modem_present())
     cpin_line = _parse_at_response(resp, '+CPIN:')
     if 'READY' in cpin_line:
         sim_status = 'Inserted'
@@ -97,6 +126,8 @@ def get_status():
     # If SIM not inserted, skip the rest
     if sim_status != 'Inserted':
         return jsonify({
+            'present': True,
+            'available': True,
             'sim_status': sim_status,
             'ip_address': '--',
             'status': '--',
@@ -143,6 +174,8 @@ def get_status():
     signal = csq_parts[0] if csq_parts else ''
 
     return jsonify({
+        'present': True,
+        'available': True,
         'sim_status': sim_status,
         'ip_address': ip_address,
         'status': status,
@@ -154,9 +187,11 @@ def get_status():
 
 
 @lte_bp.route('/api/lte/reboot', methods=['POST'])
-@admin_required
+@manage_required
 def reboot_lte():
     """Reboot the EC200A LTE module via AT+CFUN=1,1."""
+    if not _modem_present():
+        return jsonify({'error': 'LTE modem is not installed or its serial device is unavailable'}), 503
     resp = _send_at('AT+CFUN=1,1', timeout=5)
     if 'ERROR' in resp:
         return jsonify({'error': f'Failed to reboot LTE module: {resp}'}), 500
@@ -196,7 +231,7 @@ def get_watchdog():
 
 
 @lte_bp.route('/api/lte/watchdog', methods=['POST'])
-@admin_required
+@manage_required
 def set_watchdog():
     """Save watchdog targets (IPs or hostnames) to config file and update the script."""
     data = request.get_json(silent=True) or {}

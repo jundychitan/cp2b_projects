@@ -48,9 +48,9 @@ logger = logging.getLogger("connection_manager")
 
 
 # ---------------------------------------------------------------------------
-# Utility: get end0 MAC address (Linux)
+# Utility: get the configured Ethernet MAC address (Linux)
 # ---------------------------------------------------------------------------
-def get_mac_address(interface="end0"):
+def get_mac_address(interface="eth0"):
     """Return the MAC address of *interface* as a colon-separated string."""
     try:
         path = "/sys/class/net/%s/address" % interface
@@ -222,7 +222,7 @@ def _do_checkin():
                     APP.save_config(data)
                 APP.init_bridge()
                 APP.bridge.connect()
-                APP.log_event("Bridge connected%s" % (" with new config" if config_changed else ""))
+                APP.log_event("Bridge connection requested%s" % (" with new config" if config_changed else ""))
             except Exception as exc:
                 APP.log_event("Error applying config: %s" % exc)
             return
@@ -722,7 +722,7 @@ def main():
         APP.log_event("Auto-connect enabled, connecting bridge...")
         try:
             APP.bridge.connect()
-            APP.log_event("Bridge connected (auto)")
+            APP.log_event("Bridge connection requested (auto)")
         except Exception as exc:
             APP.log_event("Auto-connect failed: %s" % exc)
 

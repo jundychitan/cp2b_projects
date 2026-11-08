@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rebooting — AMR Gateway</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+      background: #17212b; color: #f4f6f8; font-family: system-ui, sans-serif; }
+    main { padding: 2rem; max-width: 38rem; text-align: center; }
+    a { color: #9dceff; }
+  </style>
+</head>
+<body>
+  <main aria-live="polite">
+    <h1 id="rebootTitle">Rebooting…</h1>
+    <p id="rebootStatus">You have been logged out. Waiting for the device to go offline.</p>
+    <p>The login page will open automatically when the device becomes available.</p>
+    <p><a href="{{ url_for('auth.login') }}">Open login page manually</a></p>
+  </main>
+  <script src="{{ url_for('static', filename='js/reboot.js') }}"></script>
+</body>
+</html>

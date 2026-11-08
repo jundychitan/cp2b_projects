@@ -73,13 +73,11 @@ async function apiDelete(url) {
 // ============================================================================
 
 function applyRoleRestrictions() {
-  if (!IS_ADMIN) {
-    document.querySelectorAll('.admin-only').forEach(el => {
+  if (!CAN_MANAGE) {
+    document.querySelectorAll('.manage-only').forEach(el => {
       if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
         el.disabled = true;
-      } else if (el.tagName === 'BUTTON' || el.tagName === 'A') {
-        el.style.display = 'none';
-      } else if (el.tagName === 'TH' || el.tagName === 'TD') {
+      } else {
         el.style.display = 'none';
       }
     });
@@ -122,35 +120,76 @@ async function changePassword() {
 // LTE Setting
 // ============================================================================
 
-let lteStatusInterval = null;
+let lteStatusTimeout = null;
+let ltePollingActive = false;
+let lteStatusRequest = null;
 
 async function loadLteStatus() {
-  const data = await apiGet('/api/lte/status');
-  if (!data) return;
+  if (lteStatusRequest) return lteStatusRequest;
+  if (lteStatusTimeout !== null) {
+    clearTimeout(lteStatusTimeout);
+    lteStatusTimeout = null;
+  }
+  const refreshButton = document.getElementById('lteRefreshBtn');
+  if (refreshButton) {
+    refreshButton.disabled = true;
+    refreshButton.textContent = 'Refreshing…';
+  }
+  lteStatusRequest = (async () => {
+    let pollDelay = 5000;
+    try {
+      const data = await apiGet('/api/lte/status');
+      if (!data) return;
+      if (data.available === false) pollDelay = 60000;
+      updateDiagnosticLtePresence(data.present);
+      const rebootButton = document.getElementById('lteRebootBtn');
+      if (rebootButton) rebootButton.disabled = !CAN_MANAGE || data.available === false;
+      const simEl = document.getElementById('lteSimStatus');
+      simEl.value = data.sim_status || '--';
+      simEl.style.color = data.sim_status === 'Inserted' ? 'green' : 'red';
+      document.getElementById('lteIpAddress').value = data.ip_address || '--';
+      document.getElementById('lteStatus').value = data.status || '--';
+      document.getElementById('lteCarrier').value = data.carrier || '--';
+      document.getElementById('lteAccess').value = data.access || '--';
+      document.getElementById('lteBand').value = data.band || '--';
+      document.getElementById('lteSignal').value = data.signal || '--';
+    } catch (error) {
+      document.getElementById('lteStatus').value = 'Unavailable';
+      updateDiagnosticLtePresence(false);
+      const rebootButton = document.getElementById('lteRebootBtn');
+      if (rebootButton) rebootButton.disabled = true;
+    } finally {
+      lteStatusRequest = null;
+      if (refreshButton) {
+        refreshButton.disabled = false;
+        refreshButton.textContent = 'Refresh';
+      }
+      if (ltePollingActive && lteStatusTimeout === null) {
+        lteStatusTimeout = setTimeout(() => {
+          lteStatusTimeout = null;
+          loadLteStatus();
+        }, pollDelay);
+      }
+    }
+  })();
+  return lteStatusRequest;
+}
 
-  const simEl = document.getElementById('lteSimStatus');
-  simEl.value = data.sim_status || '--';
-  simEl.style.color = data.sim_status === 'Inserted' ? 'green' : 'red';
-
-  document.getElementById('lteIpAddress').value = data.ip_address || '--';
-  document.getElementById('lteStatus').value = data.status || '--';
-  document.getElementById('lteCarrier').value = data.carrier || '--';
-  document.getElementById('lteAccess').value = data.access || '--';
-  document.getElementById('lteBand').value = data.band || '--';
-  document.getElementById('lteSignal').value = data.signal || '--';
+async function refreshLteStatus() {
+  await loadLteStatus();
 }
 
 function startLtePolling() {
-  loadLteStatus();
-  if (!lteStatusInterval) {
-    lteStatusInterval = setInterval(loadLteStatus, 5000);
-  }
+  if (ltePollingActive) return;
+  ltePollingActive = true;
+  if (!lteStatusRequest && lteStatusTimeout === null) loadLteStatus();
 }
 
 function stopLtePolling() {
-  if (lteStatusInterval) {
-    clearInterval(lteStatusInterval);
-    lteStatusInterval = null;
+  ltePollingActive = false;
+  if (lteStatusTimeout !== null) {
+    clearTimeout(lteStatusTimeout);
+    lteStatusTimeout = null;
   }
 }
 
@@ -180,7 +219,7 @@ function addWatchdogRow(value) {
   div.style.maxWidth = '350px';
   div.innerHTML = `
     <input type="text" class="form-control watchdog-ip" value="${escapeHtml(value || '')}" placeholder="e.g. 8.8.8.8 or https://google.com">
-    <button class="btn btn-outline-danger admin-only" type="button" onclick="this.closest('.input-group').remove()">Remove</button>
+    <button class="btn btn-outline-danger manage-only" type="button" onclick="this.closest('.input-group').remove()">Remove</button>
   `;
   container.appendChild(div);
   applyRoleRestrictions();
@@ -320,7 +359,7 @@ function renderMeterTable(meters) {
           </select></td>
       <td><input type="text" class="form-control form-control-sm meter-alt"
                  value="${escapeHtml(m.alt_address)}" disabled></td>
-      <td class="admin-only">
+      <td class="manage-only">
         <button class="btn btn-sm btn-outline-primary btn-action" onclick="editMeterRow(this)">Edit</button>
         <button class="btn btn-sm btn-outline-danger btn-action" onclick="deleteMeterRow(this)">Delete</button>
       </td>
@@ -354,7 +393,7 @@ function addMeterRow() {
           ${buildConfigDropdown('')}
         </select></td>
     <td><input type="text" class="form-control form-control-sm meter-alt" value=""></td>
-    <td class="admin-only">
+    <td class="manage-only">
       <button class="btn btn-sm btn-outline-primary btn-action" onclick="editMeterRow(this)">Edit</button>
       <button class="btn btn-sm btn-outline-danger btn-action" onclick="deleteMeterRow(this)">Delete</button>
     </td>
@@ -625,10 +664,50 @@ async function diagCheckCM() {
   if (data) appendDiagOutput(data.output);
 }
 
+let diagLtePresent = false;
+let diagLteBusy = false;
+
+function updateDiagnosticLtePresence(present) {
+  diagLtePresent = present === true;
+  const button = document.getElementById('diagLteCheckBtn');
+  if (!button) return;
+  button.disabled = !diagLtePresent || diagLteBusy;
+  button.title = diagLtePresent ? 'Query LTE modem information'
+    : 'LTE Check unavailable: modem not installed or presence could not be checked';
+}
+
+async function refreshDiagnosticLteAvailability() {
+  updateDiagnosticLtePresence(false);
+  try {
+    const res = await fetch('/api/lte/presence', { cache: 'no-store' });
+    if (res.redirected || res.status === 401) {
+      window.location.href = '/login';
+      return false;
+    }
+    const data = await res.json();
+    updateDiagnosticLtePresence(res.ok && data.present === true);
+  } catch (error) {
+    updateDiagnosticLtePresence(false);
+  }
+  return diagLtePresent;
+}
+
 async function diagLteCheck() {
-  appendDiagOutput('> LTE AT Command Check\n');
-  const data = await apiPost('/api/diagnostic/lte-check', {});
-  if (data) appendDiagOutput(data.output);
+  if (!diagLtePresent || diagLteBusy) return;
+  diagLteBusy = true;
+  updateDiagnosticLtePresence(diagLtePresent);
+  try {
+    // Recheck before use in case a modem was unplugged after opening the tab.
+    if (!await refreshDiagnosticLteAvailability()) return;
+    appendDiagOutput('> LTE AT Command Check\n');
+    const data = await apiPost('/api/diagnostic/lte-check', {});
+    if (data) appendDiagOutput(data.output);
+  } catch (error) {
+    showAlert('Unable to complete LTE Check', 'danger');
+  } finally {
+    diagLteBusy = false;
+    await refreshDiagnosticLteAvailability();
+  }
 }
 
 async function diagPingLogs() {
@@ -641,13 +720,109 @@ function clearDiagnostic() {
   document.getElementById('diagOutput').textContent = 'Waiting for command...';
 }
 
+let rebootPending = false;
+
 async function rebootDevice() {
-  const data = await apiPost('/api/diagnostic/reboot', {});
-  if (data) {
-    showAlert(data.message, 'warning');
-    // Close the modal
-    const modal = bootstrap.Modal.getInstance(document.getElementById('rebootModal'));
-    if (modal) modal.hide();
+  if (!CAN_MANAGE || rebootPending) return;
+  const button = document.getElementById('rebootDeviceBtn');
+  rebootPending = true;
+  button.disabled = true;
+  try {
+    const res = await fetch('/api/diagnostic/reboot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': button.dataset.csrfToken },
+      body: JSON.stringify({}),
+    });
+    if (res.redirected || res.status === 401) {
+      window.location.replace('/login');
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok) {
+      showAlert(data.error || 'Unable to schedule reboot', 'danger');
+      return;
+    }
+    // A new document ends all old polling and removes the authenticated UI.
+    window.location.replace('/rebooting');
+  } catch (error) {
+    showAlert('Reboot result is unknown. If the device goes offline, reopen the login page when it returns.', 'danger');
+  } finally {
+    rebootPending = false;
+    button.disabled = false;
+  }
+}
+
+// ============================================================================
+// Connection Manager (admin only; no background polling)
+// ============================================================================
+
+let connectionBusy = false;
+
+async function refreshConnectionStatus() {
+  if (!IS_ADMIN || connectionBusy) return;
+  await loadConnectionStatus();
+}
+
+async function loadConnectionStatus() {
+  if (!IS_ADMIN) return;
+  const enable = document.getElementById('connEnableBtn');
+  const disable = document.getElementById('connDisableBtn');
+  const error = document.getElementById('connError');
+  enable.disabled = true;
+  disable.disabled = true;
+  error.classList.add('d-none');
+  document.getElementById('connStatus').textContent = 'Checking...';
+  document.getElementById('connBootStatus').textContent = '--';
+  try {
+    const res = await fetch('/api/connection/status', { cache: 'no-store' });
+    if (res.redirected || res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unable to load service status');
+    document.getElementById('connStatus').textContent =
+      `${data.running ? 'Running' : 'Not running'} (${data.active_state}/${data.sub_state})`;
+    document.getElementById('connBootStatus').textContent = data.boot_state;
+    enable.disabled = data.enabled && data.running;
+    disable.disabled = data.boot_state === 'disabled' && ['inactive', 'failed'].includes(data.active_state);
+  } catch (err) {
+    document.getElementById('connStatus').textContent = 'Unavailable';
+    error.textContent = err.message;
+    error.classList.remove('d-none');
+  }
+}
+
+async function setConnectionEnabled(enabled) {
+  if (!IS_ADMIN || connectionBusy) return;
+  if (!enabled && !confirm('Disable the connection manager now and after reboot? '
+      + 'This disconnects its TCP bridge and stops check-ins. Tunnel access may be lost. '
+      + 'Saved client configuration will be preserved.')) return;
+  connectionBusy = true;
+  document.getElementById('connEnableBtn').disabled = true;
+  document.getElementById('connDisableBtn').disabled = true;
+  document.getElementById('connRefreshBtn').disabled = true;
+  try {
+    const res = await fetch('/api/connection/toggle', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': document.getElementById('connEnableBtn').dataset.csrfToken,
+      },
+      body: JSON.stringify({ enabled }),
+    });
+    if (res.redirected || res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    const data = await res.json();
+    showAlert(data.error || data.message, res.ok ? 'success' : 'danger');
+  } catch (err) {
+    showAlert('Connection manager result is unknown. Refresh status before retrying.', 'danger');
+  } finally {
+    await loadConnectionStatus();
+    connectionBusy = false;
+    document.getElementById('connRefreshBtn').disabled = false;
   }
 }
 
@@ -679,4 +854,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loadConfigList();
   });
   document.getElementById('livemeter-tab').addEventListener('shown.bs.tab', loadLiveMeterData);
+  document.getElementById('diagnostic-tab').addEventListener('shown.bs.tab', refreshDiagnosticLteAvailability);
+  const connectionTab = document.getElementById('connection-tab');
+  if (IS_ADMIN && connectionTab) {
+    connectionTab.addEventListener('shown.bs.tab', refreshConnectionStatus);
+  }
 });

@@ -467,6 +467,23 @@ class RS485TcpBridge:
 
     # -- SSH reverse tunnel (web mode) ----------------------------------------
 
+    def _drain_ssh_stderr(self, proc, ready_event, last_lines):
+        """Drain SSH diagnostics and signal confirmed remote forwarding."""
+        try:
+            for raw in proc.stderr:
+                line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                if not line:
+                    continue
+                self.logger.debug("[ssh] %s", line)
+                last_lines.append(line)
+                del last_lines[:-20]
+                # With -v, OpenSSH emits this only after the server accepts
+                # the reverse-forward request, not merely after authentication.
+                if line.startswith("debug1: remote forward success for:"):
+                    ready_event.set()
+        finally:
+            proc.stderr.close()
+
     def _run_ssh_tunnel(self) -> None:
         """Web UI bridge using SSH reverse port forwarding.
 
@@ -490,12 +507,14 @@ class RS485TcpBridge:
         remote_port = channel_cfg.get("port_y_port", self.server_port + 1)
 
         cmd = [
-            "ssh", "-N",
+            "ssh", "-N", "-v",
             "-o", "StrictHostKeyChecking=no",
             "-o", "UserKnownHostsFile=/dev/null",
             "-o", "ServerAliveInterval=15",
             "-o", "ServerAliveCountMax=3",
             "-o", "ExitOnForwardFailure=yes",
+            "-o", "BatchMode=yes",
+            "-o", "ConnectTimeout=10",
             "-R", "%d:%s:%d" % (remote_port, local_host, local_port),
             "root@%s" % self.server_host,
         ]
@@ -516,22 +535,28 @@ class RS485TcpBridge:
                 self._stop_event.wait(self.reconnect_interval)
                 continue
 
+            self._socat_proc = proc
+            self._connected = False
+            ready_event = threading.Event()
             last_lines = []
             stderr_t = threading.Thread(
-                target=self._drain_socat_stderr,
-                args=(proc, "ssh", last_lines),
+                target=self._drain_ssh_stderr,
+                args=(proc, ready_event, last_lines),
                 daemon=True,
             )
             stderr_t.start()
 
-            self._socat_proc = proc
-            self._connected = True
-            self.logger.info("SSH tunnel started (pid=%d) — remote port %d → %s:%d",
-                             proc.pid, remote_port, local_host, local_port)
+            self.logger.info("SSH tunnel connecting (pid=%d)", proc.pid)
 
             while not self._stop_event.is_set() and not self._disconnect_event.is_set():
                 if proc.poll() is not None:
                     break
+                if ready_event.is_set() and not self._connected:
+                    self._connected = True
+                    self.logger.info(
+                        "SSH tunnel connected (pid=%d) — remote port %d → %s:%d",
+                        proc.pid, remote_port, local_host, local_port,
+                    )
                 self._stop_event.wait(0.5)
 
             self._connected = False
@@ -547,11 +572,11 @@ class RS485TcpBridge:
             stderr_t.join(timeout=2)
 
             rc = proc.returncode
-            if rc not in (0, -15, 255):  # 255 = SSH connection closed
-                self.logger.warning("SSH tunnel exited unexpectedly (code=%d)", rc)
+            if rc not in (0, -15):  # 255 includes authentication/forwarding failures
+                self.logger.error("SSH tunnel exited unexpectedly (code=%d)", rc)
                 if last_lines:
                     for ln in last_lines[-5:]:
-                        self.logger.warning("[ssh] %s", ln)
+                        self.logger.error("[ssh] %s", ln)
             else:
                 self.logger.info("SSH tunnel exited (code=%d)", rc)
             self._socat_proc = None
@@ -849,10 +874,14 @@ class RS485TcpBridge:
         if self.local_mode in ("tcp", "web"):
             local_label = "Web UI" if self.local_mode == "web" else "Local TCP"
             if self._socat_proc is not None:
+                transport = "SSH tunnel" if self.local_mode == "web" else "socat"
                 if self._socat_proc.poll() is None:
-                    local_status = "CONNECTED via socat (pid=%d)" % self._socat_proc.pid
+                    state = "CONNECTED" if self._connected else "CONNECTING"
+                    local_status = "%s via %s (pid=%d)" % (
+                        state, transport, self._socat_proc.pid)
                 else:
-                    local_status = "DISCONNECTED (socat exited, code=%s)" % self._socat_proc.returncode
+                    local_status = "DISCONNECTED (%s exited, code=%s)" % (
+                        transport, self._socat_proc.returncode)
             elif self._local_sock is not None:
                 try:
                     peer = self._local_sock.getpeername()

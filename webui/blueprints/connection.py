@@ -1,106 +1,103 @@
-"""Connection Manager API routes.
+"""Admin-only lifecycle control of the installed connection manager service."""
 
-Wraps the existing /projects/tcp_client/connection_manager.py.
-The exact integration depends on what that module exposes.
-This provides a subprocess-based fallback that runs it as a script.
-"""
-
+import secrets
 import subprocess
-import sys
-import os
 
-from flask import Blueprint, jsonify, request
-from flask_login import login_required
+from flask import Blueprint, jsonify, request, session
 
 from auth import admin_required
-from config import TCP_CLIENT_DIR
+from config import CONNECTION_MANAGER_SERVICE
 
 connection_bp = Blueprint('connection', __name__)
 
-# Try to import connection_manager as a module
-_cm_module = None
-try:
-    sys.path.insert(0, TCP_CLIENT_DIR)
-    import connection_manager as _cm_module
-except (ImportError, ModuleNotFoundError):
-    _cm_module = None
+
+@connection_bp.app_context_processor
+def connection_template_context():
+    def connection_csrf_token():
+        if 'connection_csrf_token' not in session:
+            session['connection_csrf_token'] = secrets.token_hex(32)
+        return session['connection_csrf_token']
+    return {'connection_csrf_token': connection_csrf_token}
 
 
-def _run(cmd, cwd=None):
-    """Run a shell command and return (success, stdout, stderr)."""
+def _run(args):
+    """Run fixed argument lists, never a shell or a client module import."""
     try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=30, cwd=cwd
-        )
+        result = subprocess.run(args, capture_output=True, text=True, timeout=30)
         return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
     except subprocess.TimeoutExpired:
-        return False, '', 'Command timed out'
+        return False, '', 'Command timed out; the operation may still be in progress'
+    except OSError:
+        return False, '', 'Unable to run systemctl; this feature requires Linux with systemd'
+
+
+def _service_status():
+    ok, out, err = _run([
+        'systemctl', '--no-pager', 'show',
+        '--property=LoadState,ActiveState,SubState,UnitFileState',
+        CONNECTION_MANAGER_SERVICE,
+    ])
+    properties = dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
+    if properties.get('LoadState') == 'not-found':
+        return None, 'Connection manager service is not installed'
+    if not ok or properties.get('LoadState') != 'loaded':
+        return None, err or 'Unable to read the installed connection manager service'
+    if not all(properties.get(key) for key in ('ActiveState', 'SubState', 'UnitFileState')):
+        return None, 'Incomplete connection manager service status'
+    return {
+        'service': CONNECTION_MANAGER_SERVICE,
+        'enabled': properties['UnitFileState'] == 'enabled',
+        'running': properties['ActiveState'] == 'active',
+        'active_state': properties['ActiveState'],
+        'sub_state': properties['SubState'],
+        'boot_state': properties['UnitFileState'],
+    }, None
 
 
 @connection_bp.route('/api/connection/status')
-@login_required
+@admin_required
 def get_status():
-    """Get connection manager status."""
-    # Check if the connection_manager process is running
-    ok, out, _ = _run('pgrep -f connection_manager.py')
-    running = ok and out != ''
+    status, error = _service_status()
+    response = jsonify({'error': error} if error else status)
+    response.headers['Cache-Control'] = 'no-store'
+    return response, 503 if error else 200
 
-    script_path = os.path.join(TCP_CLIENT_DIR, 'connection_manager.py')
-    script_exists = os.path.exists(script_path)
 
+@connection_bp.route('/api/connection/toggle', methods=['POST'])
+@admin_required
+def toggle_connection():
+    token = session.get('connection_csrf_token', '')
+    supplied = request.headers.get('X-CSRF-Token', '')
+    if not token or not secrets.compare_digest(token.encode(), supplied.encode()):
+        return jsonify({'error': 'Invalid CSRF token; reload the page and try again'}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or type(data.get('enabled')) is not bool:
+        return jsonify({'error': 'enabled must be a JSON boolean'}), 400
+    status, error = _service_status()
+    if error:
+        return jsonify({'error': error}), 503
+    enabled = data['enabled']
+    action = 'enable' if enabled else 'disable'
+    ok, out, err = _run(['systemctl', action, '--now', CONNECTION_MANAGER_SERVICE])
+    if not ok:
+        return jsonify({
+            'error': f'Could not {action} connection manager: {err or out}. '
+                     'Boot or runtime state may have changed; refresh status before retrying.',
+        }), 500
+    status, error = _service_status()
+    if error:
+        return jsonify({'error': f'Command completed but status could not be verified: {error}'}), 503
+    expected_boot = 'enabled' if enabled else 'disabled'
+    runtime_matches = status['running'] if enabled else status['active_state'] in ('inactive', 'failed')
+    if status['boot_state'] != expected_boot or not runtime_matches:
+        return jsonify({
+            **status,
+            'error': 'Service has not reached the requested boot/runtime state. Refresh status to check.',
+        }), 409
     return jsonify({
-        'running': running,
-        'script_exists': script_exists,
-        'script_path': script_path,
+        **status,
+        'message': 'Connection manager enabled and started. Saved client configuration retained.'
+                   if enabled else
+                   'Connection manager disabled and stopped, including boot startup. '
+                   'Saved client configuration retained.',
     })
-
-
-@connection_bp.route('/api/connection/start', methods=['POST'])
-@admin_required
-def start_connection():
-    """Start the connection manager script."""
-    script_path = os.path.join(TCP_CLIENT_DIR, 'connection_manager.py')
-
-    if not os.path.exists(script_path):
-        return jsonify({'error': f'Script not found: {script_path}'}), 404
-
-    # Start in background
-    ok, _, err = _run(
-        f'nohup python3 {script_path} > /dev/null 2>&1 &',
-        cwd=TCP_CLIENT_DIR
-    )
-
-    if not ok:
-        return jsonify({'error': f'Failed to start: {err}'}), 500
-
-    return jsonify({'message': 'Connection manager started'})
-
-
-@connection_bp.route('/api/connection/stop', methods=['POST'])
-@admin_required
-def stop_connection():
-    """Stop the connection manager script."""
-    ok, _, err = _run('pkill -f connection_manager.py')
-
-    if not ok:
-        return jsonify({'error': 'No running process found or failed to stop'}), 500
-
-    return jsonify({'message': 'Connection manager stopped'})
-
-
-@connection_bp.route('/api/connection/restart', methods=['POST'])
-@admin_required
-def restart_connection():
-    """Restart the connection manager script."""
-    _run('pkill -f connection_manager.py')
-
-    script_path = os.path.join(TCP_CLIENT_DIR, 'connection_manager.py')
-    if not os.path.exists(script_path):
-        return jsonify({'error': f'Script not found: {script_path}'}), 404
-
-    _run(
-        f'nohup python3 {script_path} > /dev/null 2>&1 &',
-        cwd=TCP_CLIENT_DIR
-    )
-
-    return jsonify({'message': 'Connection manager restarted'})

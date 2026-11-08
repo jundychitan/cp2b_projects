@@ -3,9 +3,11 @@
 import json
 import os
 import secrets
+import tempfile
 from functools import wraps
+from time import perf_counter
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -27,6 +29,10 @@ class User(UserMixin):
     def is_admin(self):
         return self.role == 'admin'
 
+    @property
+    def can_manage(self):
+        return self.role in ('admin', 'dec')
+
 
 # ---------------------------------------------------------------------------
 # User store helpers
@@ -41,6 +47,21 @@ def _load_users():
     return data.get('users', {})
 
 
+def _write_users_data(data):
+    """Replace the store atomically so workers never read partially written JSON."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w', dir=os.path.dirname(USERS_FILE), delete=False
+        ) as f:
+            temporary = f.name
+            json.dump(data, f, indent=2)
+        os.replace(temporary, USERS_FILE)
+    finally:
+        if temporary is not None and os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def _save_users(users):
     """Persist users dict to JSON file, preserving secret_key."""
     data = {}
@@ -48,13 +69,22 @@ def _save_users(users):
         with open(USERS_FILE, 'r') as f:
             data = json.load(f)
     data['users'] = users
-    with open(USERS_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+    _write_users_data(data)
 
 
 def init_users():
-    """Create default users.json if it doesn't exist."""
+    """Create defaults or migrate dec privileges without changing credentials."""
     if os.path.exists(USERS_FILE):
+        users = _load_users()
+        if 'dec' not in users:
+            users['dec'] = {
+                'password_hash': generate_password_hash('1234'),
+                'role': 'dec',
+            }
+            _save_users(users)
+        elif users['dec']['role'] != 'dec':
+            users['dec']['role'] = 'dec'
+            _save_users(users)
         return
     data = {
         'secret_key': secrets.token_hex(32),
@@ -66,6 +96,10 @@ def init_users():
             'amr': {
                 'password_hash': generate_password_hash('amr123'),
                 'role': 'amr',
+            },
+            'dec': {
+                'password_hash': generate_password_hash('1234'),
+                'role': 'dec',
             },
         },
     }
@@ -109,9 +143,30 @@ def admin_required(f):
     return decorated
 
 
+def manage_required(f):
+    """Require operational write access without granting admin privileges."""
+    @wraps(f)
+    @login_required
+    def decorated(*args, **kwargs):
+        if not current_user.can_manage:
+            return jsonify({'error': 'Management access required'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+def _verify_login_password(password_hash, password):
+    """Keep hash security unchanged and identify slow verification on the device."""
+    started = perf_counter()
+    valid = check_password_hash(password_hash, password)
+    elapsed = perf_counter() - started
+    if elapsed >= 1:
+        current_app.logger.warning('Slow login password verification: %.3f seconds', elapsed)
+    return valid
+
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -123,7 +178,7 @@ def login():
         password = request.form.get('password', '')
         users = _load_users()
 
-        if username in users and check_password_hash(users[username]['password_hash'], password):
+        if username in users and _verify_login_password(users[username]['password_hash'], password):
             user = User(username, users[username]['role'])
             login_user(user, remember=True)
             next_page = request.args.get('next')

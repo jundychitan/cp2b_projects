@@ -7,7 +7,7 @@ import subprocess
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
-from auth import admin_required
+from auth import manage_required
 from config import ETH_CONNECTION_ID, LTE_CONNECTION_ID, ETH1_CONNECTION_ID, ETH_DEVICE_NAME, SERVER_IP_FILE, LOCATION_FILE, CONFIG_FILE_DIR
 
 rtu_bp = Blueprint('rtu', __name__)
@@ -99,6 +99,8 @@ def get_config():
     # Read config files
     server_ip = _read_file(SERVER_IP_FILE)
     location = _read_file(LOCATION_FILE)
+    if location.startswith('location='):
+        location = location.split('=', 1)[1]
 
     return jsonify({
         'method': method,
@@ -113,7 +115,7 @@ def get_config():
 
 
 @rtu_bp.route('/api/rtu/network', methods=['POST'])
-@admin_required
+@manage_required
 def set_network():
     """Set network configuration for end0 (DHCP or static)."""
     data = request.get_json(silent=True) or {}
@@ -206,7 +208,7 @@ def set_network():
 
 
 @rtu_bp.route('/api/rtu/server', methods=['POST'])
-@admin_required
+@manage_required
 def set_server_ip():
     """Save remote server IP."""
     data = request.get_json(silent=True) or {}
@@ -220,11 +222,11 @@ def set_server_ip():
 
 
 @rtu_bp.route('/api/rtu/location', methods=['POST'])
-@admin_required
+@manage_required
 def set_location():
-    """Save location."""
+    """Save location as a key-value parameter."""
     data = request.get_json(silent=True) or {}
     location = data.get('location', '').strip()
 
-    _write_file(LOCATION_FILE, location)
+    _write_file(LOCATION_FILE, f'location={location}')
     return jsonify({'message': 'Location saved successfully'})

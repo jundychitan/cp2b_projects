@@ -1,26 +1,27 @@
-<!-- Connection Manager Tab -->
+<!-- Only included for administrators. -->
 <div class="card mt-3">
   <div class="card-header"><h5>Connection Manager</h5></div>
   <div class="card-body">
-    <div class="mb-3 row">
-      <label class="col-sm-3 col-form-label">Status</label>
-      <div class="col-sm-6">
-        <span id="connStatus" class="badge bg-secondary fs-6">Checking...</span>
-      </div>
-    </div>
-    <div class="mb-3 row">
-      <label class="col-sm-3 col-form-label">Script Path</label>
-      <div class="col-sm-6">
-        <span id="connScriptPath" class="form-text">/projects/tcp_client/connection_manager.py</span>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-sm-9">
-        <button class="btn btn-success admin-only" id="connStartBtn" onclick="startConnection()">Start</button>
-        <button class="btn btn-danger admin-only" id="connStopBtn" onclick="stopConnection()">Stop</button>
-        <button class="btn btn-warning admin-only" onclick="restartConnection()">Restart</button>
-        <button class="btn btn-outline-secondary" onclick="refreshConnectionStatus()">Refresh</button>
-      </div>
-    </div>
+    <p>Enable the TCP client connection manager when remote connections are needed.
+      Disabling stops the service and prevents startup after reboot to save resources.
+      All saved client configuration is preserved.</p>
+    <p class="text-warning">Disabling disconnects the TCP bridge and stops remote check-ins.
+      Access through a tunnel provided by this service will be lost.</p>
+    <dl class="row">
+      <dt class="col-sm-3">Service</dt>
+      <dd class="col-sm-9">connection-manager.service</dd>
+      <dt class="col-sm-3">Runtime status</dt>
+      <dd class="col-sm-9" id="connStatus" role="status">Not checked</dd>
+      <dt class="col-sm-3">Startup after reboot</dt>
+      <dd class="col-sm-9" id="connBootStatus">Not checked</dd>
+    </dl>
+    <div id="connError" class="alert alert-danger d-none" role="alert"></div>
+    <button type="button" class="btn btn-success" id="connEnableBtn"
+            data-csrf-token="{{ connection_csrf_token() }}"
+            onclick="setConnectionEnabled(true)" disabled>Enable</button>
+    <button type="button" class="btn btn-outline-danger" id="connDisableBtn"
+            onclick="setConnectionEnabled(false)" disabled>Disable</button>
+    <button type="button" class="btn btn-outline-secondary" id="connRefreshBtn"
+            onclick="refreshConnectionStatus()">Refresh</button>
   </div>
 </div>
