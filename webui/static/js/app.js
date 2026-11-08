@@ -271,7 +271,22 @@ async function loadRtuConfig() {
   document.getElementById('rtuLocation').value = data.location || '';
 }
 
+let rtuNetworkSaving = false;
+
+function showRtuNetworkNotice(message, detail) {
+  document.getElementById('rtuNetworkMessage').textContent = message;
+  document.getElementById('rtuNetworkDetail').textContent = detail;
+  document.getElementById('rtuNetworkNotice').classList.remove('d-none');
+}
+
+function dismissRtuNetworkNotice() {
+  if (!rtuNetworkSaving) {
+    document.getElementById('rtuNetworkNotice').classList.add('d-none');
+  }
+}
+
 async function saveRtuNetwork() {
+  if (!CAN_MANAGE || rtuNetworkSaving) return;
   const isStatic = document.getElementById('rtuStatic').checked;
   const body = { method: isStatic ? 'manual' : 'auto' };
 
@@ -282,8 +297,44 @@ async function saveRtuNetwork() {
     body.dns = document.getElementById('rtuDns').value.trim();
   }
 
-  const data = await apiPost('/api/rtu/network', body);
-  if (data) showAlert(data.message, 'success');
+  const reconnect = isStatic
+    ? `Open the gateway at ${body.ip_address} using the same web UI port.`
+    : 'DHCP assigns the new IP address. Check your router/DHCP lease list or the device console, '
+      + 'then open the gateway at that address using the same web UI port.';
+  rtuNetworkSaving = true;
+  const returnButton = document.getElementById('rtuNetworkReturn');
+  returnButton.disabled = true;
+  showRtuNetworkNotice('Applying IP Address changes...', reconnect);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch('/api/rtu/network', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (res.redirected || res.status === 401) {
+      document.getElementById('rtuNetworkNotice').classList.add('d-none');
+      window.location.href = '/login';
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok) {
+      document.getElementById('rtuNetworkNotice').classList.add('d-none');
+      showAlert(data.error || 'Unable to save network settings', 'danger');
+      return;
+    }
+    showRtuNetworkNotice('IP Address changed... Please revert to the new IP.', reconnect);
+  } catch (error) {
+    showRtuNetworkNotice('IP Address change requested... Please revert to the new IP.',
+      'The connection was interrupted or timed out, so the save result could not be confirmed. '
+      + reconnect + ' If it is unreachable, check the device console before retrying.');
+  } finally {
+    clearTimeout(timeout);
+    rtuNetworkSaving = false;
+    returnButton.disabled = false;
+  }
 }
 
 async function saveRtuServer() {
