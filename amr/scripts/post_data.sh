@@ -55,7 +55,8 @@ mkdir -p "$lp_dir"
 echo $log_dir
 echo $lp_dir
 
-location=$(cat $location_file)
+#location=$(cat $location_file)
+location=$(grep "^location" "${config_file_dir}/location.cfg" | cut -d'=' -f2 | tr -d ' \"')
 
 if [ -f $server ]; then
 	#send the data from buffer

@@ -313,7 +313,7 @@ foreach ($files as $key => $value){
 					}else{
 						echo "Failed to connect to server...\n";
 						if($check_time==0){
-							$buffer_dir = "/projects/amr/meter/buffer";
+							$buffer_dir = "home/admin/projects/amr/meter/buffer";
 							@copy($dir . DIRECTORY_SEPARATOR . $value, $buffer_dir . DIRECTORY_SEPARATOR . $value);
 							unlink($dir . DIRECTORY_SEPARATOR . $value);
 						}
