@@ -4,15 +4,78 @@ import csv
 import io
 import os
 import re
+import secrets
+import stat
 import subprocess
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 from flask_login import login_required
 
 from auth import manage_required
-from config import AMR_METER_DIR, AMR_UPLOAD_DIR, METER_BATCH_FILE, PROCESS_METERS_SCRIPT
+from config import AMR_METER_DIR, AMR_UPLOAD_DIR, METER_BATCH_FILE, PROCESS_METERS_SCRIPT, SYNC_SERVER_FILE
 
 amr_bp = Blueprint('amr', __name__)
+
+
+@amr_bp.app_context_processor
+def sync_time_template_context():
+    def sync_time_csrf_token():
+        if 'sync_time_csrf_token' not in session:
+            session['sync_time_csrf_token'] = secrets.token_hex(32)
+        return session['sync_time_csrf_token']
+    return {'sync_time_csrf_token': sync_time_csrf_token}
+
+
+@amr_bp.route('/api/amr/sync-time')
+@login_required
+def get_sync_time():
+    """Report marker presence without creating files or changing device time."""
+    try:
+        mode = os.stat(SYNC_SERVER_FILE, follow_symlinks=False).st_mode
+        if not stat.S_ISREG(mode):
+            return jsonify({'error': 'sync_server is not a regular file; check the config directory'}), 409
+        enabled = True
+    except FileNotFoundError:
+        enabled = False
+    except OSError:
+        return jsonify({'error': 'Unable to read Sync Server Time state'}), 500
+    response = jsonify({'enabled': enabled})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@amr_bp.route('/api/amr/sync-time', methods=['POST'])
+@manage_required
+def set_sync_time():
+    """Create an empty sync_server marker when checked, remove it when unchecked."""
+    token = session.get('sync_time_csrf_token', '')
+    supplied = request.headers.get('X-CSRF-Token', '')
+    if not token or not secrets.compare_digest(token.encode(), supplied.encode()):
+        return jsonify({'error': 'Invalid CSRF token; reload the page and try again'}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or type(data.get('enabled')) is not bool:
+        return jsonify({'error': 'enabled must be a JSON boolean'}), 400
+    enabled = data['enabled']
+    try:
+        if enabled:
+            os.makedirs(os.path.dirname(SYNC_SERVER_FILE), exist_ok=True)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_NOFOLLOW', 0)
+            descriptor = os.open(SYNC_SERVER_FILE, flags, 0o644)
+            os.close(descriptor)
+        else:
+            try:
+                os.unlink(SYNC_SERVER_FILE)
+            except FileNotFoundError:
+                pass
+    except OSError:
+        return jsonify({'error': 'Unable to save Sync Server Time; check config directory permissions'}), 500
+    response = jsonify({
+        'enabled': enabled,
+        'message': 'Sync Server Time enabled (sync_server created).' if enabled
+                   else 'Sync Server Time disabled (sync_server removed).',
+    })
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 def _run(cmd):

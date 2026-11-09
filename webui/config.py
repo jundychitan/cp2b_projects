@@ -15,6 +15,7 @@ AMR_SCRIPTS_DIR = os.path.join(AMR_BASE_DIR, 'scripts')
 # File paths
 SERVER_IP_FILE = os.path.join(CONFIG_FILE_DIR, 'server_ip.txt')
 LOCATION_FILE = os.path.join(CONFIG_FILE_DIR, 'location.cfg')
+SYNC_SERVER_FILE = os.path.join(CONFIG_FILE_DIR, 'sync_server')
 METER_BATCH_FILE = os.path.join(AMR_UPLOAD_DIR, 'meter_batch.csv')
 PROCESS_METERS_SCRIPT = os.path.join(AMR_SCRIPTS_DIR, 'process_meters.sh')
 

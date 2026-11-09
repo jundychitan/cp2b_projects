@@ -161,6 +161,11 @@ files does not update an older installed unit. Verify with
 - **Location** — Saved to `/home/admin/projects/config_file/location.cfg` as `location=<value>` (for example, `location=Building A`).
 
 ### AMR Setting
+- **Sync Server Time** — Checkbox saved immediately. Checked creates an empty
+  `/home/admin/projects/config_file/sync_server`; unchecked removes it. Existing
+  marker state is loaded when opening AMR Setting. Admin/dec can change it;
+  `amr` can only view it. This controls the flag used by the meter script; the
+  web UI does not directly change the clock or run time synchronization.
 - **Auto Read** — Enables/disables a crontab entry that runs `/home/admin/projects/amr/scripts/process_meters.sh` at the specified interval (in minutes).
 - **Meter Batch File** — CRUD table for meter entries (S/N, Config File, Alternate Address). Saved as CSV to `/home/admin/projects/amr/upload/meter_batch.csv`. Config File dropdown lists `*.cfg` files from `/home/admin/projects/amr/meter/` (excluding `defaults.cfg`).
 - **Config File Editor** — Edit, save, save-as, or delete `*.cfg` files in `/home/admin/projects/amr/meter/`.
@@ -249,6 +254,8 @@ amr_gateway_webui/
 | POST   | `/api/rtu/location`             | admin/dec | Set location                 |
 | GET    | `/api/amr/autoread`             | any    | Get auto read status            |
 | POST   | `/api/amr/autoread`             | admin/dec | Enable/disable auto read     |
+| GET    | `/api/amr/sync-time`            | any    | Read sync_server marker state   |
+| POST   | `/api/amr/sync-time`            | admin/dec + CSRF | Create/remove empty marker |
 | GET    | `/api/amr/meters`               | any    | Get meter batch list            |
 | POST   | `/api/amr/meters`               | admin/dec | Save meter batch list        |
 | GET    | `/api/amr/meter-configs`        | any    | List cfg files (excl defaults)  |
@@ -266,7 +273,7 @@ amr_gateway_webui/
 | POST   | `/api/auth/change-password`     | any    | Change own password             |
 | POST   | `/api/auth/reset-password`      | admin + CSRF | Reset dec/amr to 1234       |
 
-Reboot, Connection Manager toggle, and admin password reset use session CSRF tokens;
+Reboot, Connection Manager toggle, admin password reset, and Sync Server Time use session CSRF tokens;
 this does not imply CSRF coverage for every legacy endpoint.
 
 ## Validation
@@ -280,6 +287,7 @@ node tests/test_reboot_ui.js
 node tests/test_login_ui.js
 node tests/test_diagnostic_ui.js
 node tests/test_password_reset_ui.js
+node tests/test_sync_server_time_ui.js
 ```
 
 Tests use temporary state and mocked hardware, package, and service operations.

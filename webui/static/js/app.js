@@ -352,6 +352,76 @@ async function saveRtuLocation() {
 }
 
 // ============================================================================
+// AMR Setting - Sync Server Time
+// ============================================================================
+
+let syncTimeBusy = false;
+let syncTimeLoaded = false;
+let syncTimeEnabled = false;
+
+async function loadSyncServerTime() {
+  if (syncTimeBusy) return;
+  syncTimeBusy = true;
+  syncTimeLoaded = false;
+  const checkbox = document.getElementById('syncServerTime');
+  checkbox.disabled = true;
+  try {
+    const res = await fetch('/api/amr/sync-time', { cache: 'no-store' });
+    if (res.redirected || res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok || typeof data.enabled !== 'boolean') {
+      showAlert(data.error || 'Unable to read Sync Server Time', 'danger');
+      return;
+    }
+    syncTimeEnabled = data.enabled;
+    checkbox.checked = syncTimeEnabled;
+    syncTimeLoaded = true;
+  } catch (error) {
+    showAlert('Unable to read Sync Server Time. Reopen AMR Setting to retry.', 'danger');
+  } finally {
+    syncTimeBusy = false;
+    checkbox.disabled = !CAN_MANAGE || !syncTimeLoaded;
+  }
+}
+
+async function saveSyncServerTime() {
+  if (!CAN_MANAGE || syncTimeBusy || !syncTimeLoaded) return;
+  syncTimeBusy = true;
+  const checkbox = document.getElementById('syncServerTime');
+  checkbox.disabled = true;
+  try {
+    const res = await fetch('/api/amr/sync-time', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': checkbox.dataset.csrfToken },
+      body: JSON.stringify({ enabled: checkbox.checked }),
+    });
+    if (res.redirected || res.status === 401) {
+      syncTimeLoaded = false;
+      window.location.href = '/login';
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok) {
+      showAlert(data.error || 'Unable to save Sync Server Time', 'danger');
+      return;
+    }
+    if (typeof data.enabled !== 'boolean') throw new Error('Invalid marker state');
+    syncTimeEnabled = data.enabled;
+    showAlert(data.message, 'success');
+  } catch (error) {
+    syncTimeLoaded = false;
+    showAlert('Sync Server Time result is unknown. Reopen AMR Setting to refresh its state.', 'danger');
+  } finally {
+    checkbox.checked = syncTimeEnabled;
+    syncTimeBusy = false;
+    checkbox.disabled = !CAN_MANAGE || !syncTimeLoaded;
+  }
+}
+
+// ============================================================================
 // AMR Setting - Auto Read
 // ============================================================================
 
@@ -900,6 +970,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('lte-tab').addEventListener('hidden.bs.tab', stopLtePolling);
   document.getElementById('rtu-tab').addEventListener('shown.bs.tab', loadRtuConfig);
   document.getElementById('amr-tab').addEventListener('shown.bs.tab', () => {
+    loadSyncServerTime();
     loadAutoRead();
     loadMeters();
     loadConfigList();
