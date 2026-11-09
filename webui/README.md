@@ -4,8 +4,8 @@ Web-based configuration interface for the CP2B AMR Gateway running Ubuntu 24.04.
 
 ## Features
 
-- **LTE Setting** — SIM/IP, carrier, signal and internet status, manual Refresh, modem reboot, and Internet Watchdog targets
-- **RTU Setting** — DHCP/Static IP configuration for eth0 (`ETH0`), remote server IP, location
+- **LTE Status** — Conditional modem status tab with SIM/IP, carrier, signal, Refresh, and modem reboot
+- **RTU Setting** — Default tab with MAC Address, Network Setting, AMR Server Setting, and Internet Watchdog cards
 - **AMR Setting** — Auto read scheduling (crontab), meter batch file management, config file editor
 - **Connection Manager** — Admin-only runtime and boot-start control of the installed `connection-manager.service`
 - **Authentication** — Admin, operational `dec`, and read-only `amr` roles, with backend enforcement
@@ -146,7 +146,13 @@ every second. It resynchronizes with the device every 30 seconds, pauses when
 the page is hidden, and reports Unavailable if no fresh sample exists for 90
 seconds. It does not use the browser's timezone or set the device clock.
 
-### LTE Setting
+### LTE Status
+- Shown only when the configured modem device is detected, using the same
+  presence rule as SMS Messages. This is hardware presence, not internet
+  connectivity: detected but disconnected/unresponsive modems remain visible.
+  Checks run on startup, tab navigation, and return to the page. If the modem
+  disappears or presence cannot be checked, both modem tabs hide and an active
+  LTE/SMS view returns to RTU. Hidden LTE Status does not send status AT polling.
 - **SIM/IP** — Retains CP2B's SIM status and assigned modem IP display.
 - **Status** — Retains `AT+QPING` internet testing against the first watchdog target.
 - **Availability** — Missing `/dev/ttyUSB2` returns Not installed without AT queries.
@@ -157,16 +163,63 @@ seconds. It does not use the browser's timezone or set the device clock.
 - **LTE Reboot** — Admin/dec only; disabled while unavailable.
 - **Diagnostic LTE Check** — Gated by device-node presence, rechecked before use;
   a detected but disconnected modem can still be checked.
-- **Internet Watchdog** — Admin/dec can save targets; its script is
-  `/home/admin/projects/modem/internet-watchdog.sh`.
+
+### SMS Messages
+- Shown next to LTE Status only when the configured LTE serial device is present.
+- All signed-in users can read received SMS. Opening the tab or clicking
+  **Refresh** loads sender, modem timestamp, unread/read status, and message text.
+  Loading marks unread SMS as read on the modem; the displayed status is from
+  before that read. There is no background SMS polling, sending, deletion,
+  or browser persistence.
+- Reads the modem's currently selected SMS storage (`AT+CPMS?`) and reports
+  used/total slots. It does not switch storage or change message routing.
+  Long messages appear as numbered parts; only stored received messages are shown.
+  GSM-7 and UCS2 text are decoded; binary/unsupported encodings show hexadecimal data.
+- Requires EC200A firmware supporting SMS PDU mode and `AT+CMGL=4`.
+  The temporary SMS display format is restored before releasing the exclusive serial port.
+  SIM/PIN, unsupported firmware, busy-port and timeout errors are reported.
+  If another modem operation is active, wait for it to finish and retry.
+- `GET /api/lte/sms` requires login and returns uncached message data.
+- Hardware-mocked tests: `python -m unittest discover -s tests -p "test_sms.py" -v`.
+  Frontend checks: `node tests/test_sms_ui.js`.
 
 ### RTU Setting
+RTU is the default tab. Its cards, in order, are:
+- **MAC Address** — Live interface MAC. CP2B has no binding/reset controls.
+- **Network Setting** — IP method, address, subnet, gateway, and DNS; Save Network
+  remains in this card's header.
+- **AMR Server Setting** — Remote Server IP and Location, with their separate save
+  buttons in the card header.
+- **Internet Watchdog** — Target list, Add Target, and Save. Available independently
+  of LTE hardware; its script is `/home/admin/projects/modem/internet-watchdog.sh`.
+
+The Watchdog card is rendered by `templates/watchdog.html`; deploy the complete
+template tree when updating.
+
 - **IP Method** — Toggle between DHCP and Static IP for the `eth0` interface.
 - **IP Address / Subnet / Gateway** — Only editable when Static is selected. Applied to `ETH0`; cleanup preserves `ETH1` and `LTE`.
 - **Remote Server IP** — Saved to `/home/admin/projects/config_file/server_ip.txt`.
 - **Location** — Saved to `/home/admin/projects/config_file/location.cfg` as `location=<value>` (for example, `location=Building A`).
 
 ### AMR Setting
+- **Upload / Download** — Meter Batch File has Upload (admin/dec) and Download
+  (all signed-in users) controls. Upload accepts any filename/extension and
+  always saves to `/home/admin/projects/amr/upload/meter_batch.csv`.
+  Use UTF-8 CSV (optional BOM), up to 1 MiB, without a header. Every nonblank
+  record must be `serial_number,config_file.cfg,modbus_id`: exactly three fields,
+  digit-only serial/Modbus ID, and a `.cfg` basename with no directory path or
+  control characters. Leading zeros are retained; no Modbus ID range is imposed.
+  Config filenames need not be installed; unknown names remain selected in the
+  table and are marked "(not installed)".
+  The browser validates before sending, and the server validates every entry
+  again before replacement. Invalid uploads leave the saved file unchanged.
+  Replacement requires confirmation and a session CSRF token; unsaved table
+  edits are replaced. For more than 32 valid rows, all are validated and only
+  the first 32 are saved, with a warning.
+  Download copies the saved file, not unsaved table edits. A Save As picker lets
+  you choose the host PC destination where supported (typically HTTPS). Otherwise
+  the browser uses its normal download behavior; enable "Ask where to save each
+  file" in browser settings to choose a location for every download.
 - **Meter limit** — Loading `meter_batch.csv` keeps only the first 32 valid
   entries. Oversized files are automatically and permanently trimmed to those
   entries, with a UI warning. Files within the limit are not rewritten. Blank
@@ -270,6 +323,8 @@ amr_gateway_webui/
 | POST   | `/api/amr/sync-time`            | admin/dec + CSRF | Create/remove empty marker |
 | GET    | `/api/amr/meters`               | any    | Get meter batch list            |
 | POST   | `/api/amr/meters`               | admin/dec | Save meter batch list        |
+| POST   | `/api/amr/meters/upload`        | admin/dec + CSRF | Validate uploaded file and replace fixed CSV |
+| GET    | `/api/amr/meters/download`      | any    | Download saved meter_batch.csv  |
 | GET    | `/api/amr/meter-configs`        | any    | List cfg files (excl defaults)  |
 | GET    | `/api/amr/configs`              | any    | List all cfg files              |
 | GET    | `/api/amr/configs/<file>`       | any    | Read cfg file content           |
@@ -286,7 +341,7 @@ amr_gateway_webui/
 | POST   | `/api/auth/change-password`     | any    | Change own password             |
 | POST   | `/api/auth/reset-password`      | admin + CSRF | Reset dec/amr to 1234       |
 
-Reboot, Connection Manager toggle, admin password reset, and Sync Server Time use session CSRF tokens;
+Reboot, Connection Manager toggle, admin password reset, Sync Server Time, and CSV upload use session CSRF tokens;
 this does not imply CSRF coverage for every legacy endpoint.
 
 ## Validation
@@ -302,6 +357,7 @@ node tests/test_diagnostic_ui.js
 node tests/test_password_reset_ui.js
 node tests/test_sync_server_time_ui.js
 node tests/test_meter_limit_ui.js
+node tests/test_meter_transfer_ui.js
 node tests/test_machine_clock_ui.js
 ```
 

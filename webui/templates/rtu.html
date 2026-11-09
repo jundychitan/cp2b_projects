@@ -14,7 +14,9 @@
   </div>
 </section>
 <div class="card mt-3">
-  <div class="card-header"><h5>RTU Setting</h5></div>
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <h5 class="mb-0">MAC Address</h5>
+  </div>
   <div class="card-body">
     <!-- MAC Address (read-only) -->
     <div class="mb-3 row">
@@ -24,6 +26,15 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <h5 class="mb-0">Network Setting</h5>
+    <button type="button" class="btn btn-primary btn-sm manage-only" onclick="saveRtuNetwork()">Save Network</button>
+  </div>
+  <div class="card-body">
     <!-- IP Method Toggle -->
     <div class="mb-3 row">
       <label class="col-sm-3 col-form-label">IP Method</label>
@@ -78,34 +89,34 @@
       </div>
     </div>
 
-    <div class="row mb-3">
-      <div class="col-sm-9 text-end">
-        <button class="btn btn-primary manage-only" onclick="saveRtuNetwork()">Save Network</button>
-      </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <h5 class="mb-0">AMR Server Setting</h5>
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" class="btn btn-primary btn-sm manage-only" onclick="saveRtuServer()">Save Server IP</button>
+      <button type="button" class="btn btn-primary btn-sm manage-only" onclick="saveRtuLocation()">Save Location</button>
     </div>
-
-    <hr>
-
+  </div>
+  <div class="card-body">
     <!-- Remote Server IP -->
     <div class="mb-3 row">
       <label for="rtuServerIp" class="col-sm-3 col-form-label">Remote Server IP</label>
-      <div class="col-sm-4">
+      <div class="col-sm-6">
         <input type="text" class="form-control" id="rtuServerIp" placeholder="e.g. 10.0.0.1">
-      </div>
-      <div class="col-sm-2">
-        <button class="btn btn-primary manage-only" onclick="saveRtuServer()">Save</button>
       </div>
     </div>
 
     <!-- Location -->
     <div class="mb-3 row">
       <label for="rtuLocation" class="col-sm-3 col-form-label">Location</label>
-      <div class="col-sm-4">
+      <div class="col-sm-6">
         <input type="text" class="form-control" id="rtuLocation" placeholder="e.g. Building A">
-      </div>
-      <div class="col-sm-2">
-        <button class="btn btn-primary manage-only" onclick="saveRtuLocation()">Save</button>
       </div>
     </div>
   </div>
 </div>
+
+{% include 'watchdog.html' %}

@@ -31,6 +31,10 @@ async function main() {
     meter_sn: `SN${i}`, config_file: 'meter.cfg', alt_address: '',
   }));
   context.renderMeterTable(meters);
+  assert.match(context.buildConfigDropdown('not installed.cfg'),
+    /value="not installed\.cfg" selected/);
+  assert.match(context.buildConfigDropdown('meter"name.cfg'),
+    /value="meter&quot;name\.cfg" selected/);
   assert.equal(table.children.length, 32, 'Defensively cap the rendered table at 32 rows');
   assert.match(table.children[31].html, /SN31/);
   context.addMeterRow();

@@ -79,12 +79,17 @@
     <!-- Tab navigation -->
     <ul class="nav nav-tabs" id="mainTabs" role="tablist">
       <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="lte-tab" data-bs-toggle="tab"
-                data-bs-target="#lte" type="button" role="tab">LTE Setting</button>
+        <button class="nav-link active" id="rtu-tab" data-bs-toggle="tab"
+                data-bs-target="#rtu" type="button" role="tab" aria-selected="true">RTU Setting</button>
       </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="rtu-tab" data-bs-toggle="tab"
-                data-bs-target="#rtu" type="button" role="tab">RTU Setting</button>
+      <li class="nav-item d-none" id="lteNavItem" role="presentation">
+        <button class="nav-link" id="lte-tab" data-bs-toggle="tab"
+                data-bs-target="#lte" type="button" role="tab" aria-selected="false">LTE Status</button>
+      </li>
+      <li class="nav-item d-none" id="smsNavItem" role="presentation">
+        <button class="nav-link" id="sms-tab" data-bs-toggle="tab"
+                data-bs-target="#sms" type="button" role="tab"
+                aria-controls="sms" aria-selected="false">SMS Messages</button>
       </li>
       <li class="nav-item" role="presentation">
         <button class="nav-link" id="amr-tab" data-bs-toggle="tab"
@@ -112,11 +117,14 @@
 
     <!-- Tab content -->
     <div class="tab-content" id="mainTabContent">
-      <div class="tab-pane fade show active" id="lte" role="tabpanel">
+      <div class="tab-pane fade show active" id="rtu" role="tabpanel" aria-labelledby="rtu-tab">
+        {% include 'rtu.html' %}
+      </div>
+      <div class="tab-pane fade" id="lte" role="tabpanel" aria-labelledby="lte-tab">
         {% include 'lte.html' %}
       </div>
-      <div class="tab-pane fade" id="rtu" role="tabpanel">
-        {% include 'rtu.html' %}
+      <div class="tab-pane fade" id="sms" role="tabpanel" aria-labelledby="sms-tab">
+        {% include 'sms.html' %}
       </div>
       <div class="tab-pane fade" id="amr" role="tabpanel">
         {% include 'amr.html' %}
@@ -200,6 +208,8 @@
   </script>
   <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/sms.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/meter_transfer.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/machine_clock.js') }}" defer></script>
 </body>
 </html>

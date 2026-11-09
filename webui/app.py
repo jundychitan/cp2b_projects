@@ -5,6 +5,7 @@ from flask_login import login_required
 
 from auth import auth_bp, get_secret_key, init_users, login_manager
 from blueprints.lte import lte_bp
+from blueprints.sms import sms_bp
 from blueprints.rtu import rtu_bp
 from blueprints.amr import amr_bp
 from blueprints.livemeter import livemeter_bp
@@ -27,19 +28,20 @@ def create_app():
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(lte_bp)
+    app.register_blueprint(sms_bp)
     app.register_blueprint(rtu_bp)
     app.register_blueprint(amr_bp)
     app.register_blueprint(livemeter_bp)
     app.register_blueprint(diagnostic_bp)
     app.register_blueprint(connection_bp)
 
-    # Root route - redirect to LTE tab (default)
+    # Root route - RTU remains available even when no modem is installed.
     @app.route('/')
     @login_required
     def index():
         from flask import render_template
         from flask_login import current_user
-        return render_template('base.html', active_tab='lte', user=current_user)
+        return render_template('base.html', active_tab='rtu', user=current_user)
 
     return app
 

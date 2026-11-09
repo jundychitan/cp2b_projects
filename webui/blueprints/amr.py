@@ -11,14 +11,16 @@ import tempfile
 import threading
 from contextlib import contextmanager
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, send_file, session
 from flask_login import login_required
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from auth import manage_required
 from config import AMR_METER_DIR, AMR_UPLOAD_DIR, METER_BATCH_FILE, PROCESS_METERS_SCRIPT, SYNC_SERVER_FILE
 
 amr_bp = Blueprint('amr', __name__)
 MAX_METERS = 32
+MAX_METER_UPLOAD_BYTES = 1024 * 1024
 _meter_thread_lock = threading.Lock()
 
 
@@ -28,7 +30,15 @@ def sync_time_template_context():
         if 'sync_time_csrf_token' not in session:
             session['sync_time_csrf_token'] = secrets.token_hex(32)
         return session['sync_time_csrf_token']
-    return {'sync_time_csrf_token': sync_time_csrf_token}
+
+    def meter_upload_csrf_token():
+        if 'meter_upload_csrf_token' not in session:
+            session['meter_upload_csrf_token'] = secrets.token_hex(32)
+        return session['meter_upload_csrf_token']
+    return {
+        'sync_time_csrf_token': sync_time_csrf_token,
+        'meter_upload_csrf_token': meter_upload_csrf_token,
+    }
 
 
 @amr_bp.route('/api/amr/sync-time')
@@ -191,7 +201,7 @@ def _write_meter_rows(rows, original_stat=None):
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode='w', newline='', dir=os.path.dirname(METER_BATCH_FILE), delete=False
+            mode='w', encoding='utf-8', newline='', dir=os.path.dirname(METER_BATCH_FILE), delete=False
         ) as f:
             temporary = f.name
             csv.writer(f).writerows(rows)
@@ -220,7 +230,7 @@ def get_meters():
             response.headers['Cache-Control'] = 'no-store'
             return response
         with _meter_batch_lock():
-            with open(METER_BATCH_FILE, 'r', newline='') as f:
+            with open(METER_BATCH_FILE, 'r', encoding='utf-8-sig', newline='') as f:
                 original_stat = os.fstat(f.fileno())
                 for row in csv.reader(f):
                     if len(row) < 2:
@@ -270,6 +280,100 @@ def save_meters():
         return jsonify({'error': 'Unable to save meter_batch.csv; check directory permissions'}), 500
 
     return jsonify({'message': f'Saved {len(meters)} meter(s) to meter_batch.csv'})
+
+
+def _validate_meter_upload(text):
+    """Validate every nonblank record, retaining only the first MAX_METERS."""
+    rows = []
+    total = 0
+    reader = csv.reader(io.StringIO(text, newline=''), strict=True)
+    try:
+        for raw in reader:
+            line = reader.line_num
+            if not raw or (len(raw) == 1 and not raw[0].strip()):
+                continue
+            if len(raw) != 3:
+                raise ValueError(f'Line {line}: expected serial number,config_file.cfg,modbus_id (3 fields)')
+            serial, config_file, modbus_id = (field.strip() for field in raw)
+            if not re.fullmatch(r'[0-9]+', serial):
+                raise ValueError(f'Line {line}: serial number must contain digits only')
+            if (len(config_file) <= 4 or not config_file.endswith('.cfg')
+                    or '/' in config_file or '\\' in config_file
+                    or re.search(r'[\x00-\x1f\x7f-\x9f]', config_file)):
+                raise ValueError(f'Line {line}: config_file must be a filename ending in .cfg, without a directory path')
+            if not re.fullmatch(r'[0-9]+', modbus_id):
+                raise ValueError(f'Line {line}: Modbus ID must contain digits only')
+            total += 1
+            if len(rows) < MAX_METERS:
+                rows.append([serial, config_file, modbus_id])
+    except csv.Error as error:
+        raise ValueError(f'Line {reader.line_num}: invalid CSV format') from error
+    if not total:
+        raise ValueError('The uploaded file contains no meter entries')
+    return rows, total
+
+
+@amr_bp.route('/api/amr/meters/upload', methods=['POST'])
+@manage_required
+def upload_meter_batch():
+    """Validate the complete upload before atomically replacing the fixed CSV path."""
+    token = session.get('meter_upload_csrf_token', '')
+    supplied = request.headers.get('X-CSRF-Token', '')
+    if not token or not secrets.compare_digest(token.encode(), supplied.encode()):
+        return jsonify({'error': 'Invalid CSRF token; reload the page and try again'}), 403
+    request.max_content_length = MAX_METER_UPLOAD_BYTES + 64 * 1024
+    try:
+        upload = request.files.get('file')
+        if upload is None or not upload.filename:
+            return jsonify({'error': 'Choose a file to upload'}), 400
+        content = upload.stream.read(MAX_METER_UPLOAD_BYTES + 1)
+        if len(content) > MAX_METER_UPLOAD_BYTES:
+            return jsonify({'error': 'Upload must be 1 MiB or smaller'}), 413
+        rows, total = _validate_meter_upload(content.decode('utf-8-sig'))
+    except RequestEntityTooLarge:
+        return jsonify({'error': 'Upload must be 1 MiB or smaller'}), 413
+    except UnicodeError:
+        return jsonify({'error': 'Upload must be a UTF-8 CSV text file'}), 400
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 400
+    try:
+        with _meter_batch_lock():
+            try:
+                original_stat = os.stat(METER_BATCH_FILE)
+            except FileNotFoundError:
+                original_stat = None
+            _write_meter_rows(rows, original_stat)
+    except OSError:
+        return jsonify({'error': 'Unable to store meter_batch.csv; the upload was not saved'}), 500
+    message = f'Uploaded {len(rows)} meter entries to meter_batch.csv.'
+    if total > MAX_METERS:
+        message += f' Validated all {total} entries; only the first {MAX_METERS} were kept.'
+    response = jsonify({
+        'message': message, 'truncated': total > MAX_METERS,
+        'meters': [{'meter_sn': row[0], 'config_file': row[1], 'alt_address': row[2]} for row in rows],
+    })
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@amr_bp.route('/api/amr/meters/download')
+@login_required
+def download_meter_batch():
+    """Download a snapshot of the saved CSV, never a path supplied by the browser."""
+    try:
+        os.stat(METER_BATCH_FILE)
+        with _meter_batch_lock():
+            with open(METER_BATCH_FILE, 'rb') as f:
+                contents = f.read()
+    except FileNotFoundError:
+        return jsonify({'error': 'meter_batch.csv was not found'}), 404
+    except OSError:
+        return jsonify({'error': 'Unable to read meter_batch.csv'}), 500
+    response = send_file(io.BytesIO(contents), mimetype='text/csv', as_attachment=True,
+                         download_name='meter_batch.csv', max_age=0, conditional=False)
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 
 @amr_bp.route('/api/amr/meter-configs')

@@ -142,6 +142,7 @@ async function loadLteStatus() {
       if (!data) return;
       if (data.available === false) pollDelay = 60000;
       updateDiagnosticLtePresence(data.present);
+      if (typeof updateSmsPresence === 'function') updateSmsPresence(data.present);
       const rebootButton = document.getElementById('lteRebootBtn');
       if (rebootButton) rebootButton.disabled = !CAN_MANAGE || data.available === false;
       const simEl = document.getElementById('lteSimStatus');
@@ -200,7 +201,7 @@ async function rebootLte() {
 }
 
 // ============================================================================
-// LTE Setting - Internet Watchdog
+// RTU Setting - Internet Watchdog
 // ============================================================================
 
 async function loadWatchdogTargets() {
@@ -457,9 +458,14 @@ async function loadMeterConfigs() {
 
 function buildConfigDropdown(selected) {
   let html = '<option value="">-- Select --</option>';
+  if (selected && !meterConfigList.includes(selected)) {
+    const safe = escapeHtml(selected).replace(/"/g, '&quot;');
+    html += `<option value="${safe}" selected>${safe} (not installed)</option>`;
+  }
   for (const cfg of meterConfigList) {
     const sel = cfg === selected ? ' selected' : '';
-    html += `<option value="${cfg}"${sel}>${cfg}</option>`;
+    const safe = escapeHtml(cfg).replace(/"/g, '&quot;');
+    html += `<option value="${safe}"${sel}>${safe}</option>`;
   }
   return html;
 }
@@ -961,17 +967,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Apply role restrictions
   applyRoleRestrictions();
 
-  // Load data for the active tab (LTE)
-  startLtePolling();
+  // RTU is always available, including on devices without an LTE modem.
+  loadRtuConfig();
   loadWatchdogTargets();
 
   // Load data when tabs are shown, manage LTE polling
-  document.getElementById('lte-tab').addEventListener('shown.bs.tab', () => {
-    startLtePolling();
+  document.getElementById('lte-tab').addEventListener('shown.bs.tab', startLtePolling);
+  document.getElementById('lte-tab').addEventListener('hidden.bs.tab', stopLtePolling);
+  document.getElementById('rtu-tab').addEventListener('shown.bs.tab', () => {
+    loadRtuConfig();
     loadWatchdogTargets();
   });
-  document.getElementById('lte-tab').addEventListener('hidden.bs.tab', stopLtePolling);
-  document.getElementById('rtu-tab').addEventListener('shown.bs.tab', loadRtuConfig);
   document.getElementById('amr-tab').addEventListener('shown.bs.tab', () => {
     loadSyncServerTime();
     loadAutoRead();
