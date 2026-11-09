@@ -10,6 +10,7 @@
     .tab-content { padding: 20px 0; }
     .btn-action { margin-right: 5px; }
     .readonly-hide { }
+    .navbar-account-green { color: #75e39b; }
     @media (max-width: 991.98px) {
       body { padding-top: 60px; }
       .navbar-nav-right { padding-top: 8px; }
@@ -35,22 +36,25 @@
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarRight">
-        <div class="ms-auto d-flex flex-wrap align-items-center gap-2 navbar-nav-right">
-          <span class="text-light small">Device time: <span id="machineClock">Loading...</span></span>
-          <span class="text-light" id="loginDetails">Logged in as: {{ current_user.username }}</span>
-          <button class="btn btn-outline-light btn-sm" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">
-            &#9790;
-          </button>
-          <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
-            Change Password
-          </button>
-          {% if current_user.is_admin %}
-          <button type="button" class="btn btn-outline-warning btn-sm" id="resetUserPasswordMenu"
-                  data-bs-toggle="modal" data-bs-target="#resetUserPasswordModal">
-            Reset User Password
-          </button>
-          {% endif %}
-          <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger btn-sm">Logout</a>
+        <div class="ms-auto d-flex flex-column align-items-end gap-1 navbar-nav-right">
+          <div class="d-flex flex-wrap justify-content-end align-items-center gap-2" id="accountActions">
+            <span class="navbar-account-green fw-bold" id="loginDetails">Logged in as: {{ current_user.username }}</span>
+            <button class="btn btn-outline-light btn-sm" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">
+              &#9790;
+            </button>
+            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
+              Change Password
+            </button>
+            {% if current_user.is_admin %}
+            <button type="button" class="btn btn-outline-warning btn-sm" id="resetUserPasswordMenu"
+                    data-bs-toggle="modal" data-bs-target="#resetUserPasswordModal">
+              Reset User Password
+            </button>
+            {% endif %}
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger btn-sm">Logout</a>
+          </div>
+          <span class="navbar-account-green small text-nowrap" id="machineClock"
+                aria-label="Machine time">Loading...</span>
         </div>
       </div>
     </div>

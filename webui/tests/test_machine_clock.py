@@ -73,6 +73,15 @@ class MachineClockTests(unittest.TestCase):
                 self.assertIn(f'Logged in as: {role}</span>', navbar)
                 self.assertNotIn('class="badge', navbar)
                 self.assertIn('id="machineClock"', navbar)
+                self.assertNotIn('Device time:', navbar)
+                self.assertIn('class="navbar-account-green fw-bold" id="loginDetails"', navbar)
+                self.assertIn('class="navbar-account-green small text-nowrap" id="machineClock"', navbar)
+                self.assertIn('flex-column align-items-end', navbar)
+                self.assertLess(navbar.index('>Logout</a>'), navbar.index('id="machineClock"'))
+                actions = navbar.split('id="accountActions">', 1)[1].split('</div>', 1)[0]
+                self.assertIn('Change Password', actions)
+                self.assertIn('Logout', actions)
+                self.assertNotIn('id="machineClock"', actions)
                 self.assertIn('js/machine_clock.js', html)
 
 
