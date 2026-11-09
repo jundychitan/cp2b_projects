@@ -1,18 +1,30 @@
-"""Read stored EC200A SMS. Listing marks unread messages read on the modem."""
+"""Read and explicitly delete stored EC200A SMS in the selected storage."""
 
 import csv
 import math
 import re
+import secrets
 import time
 
 import serial
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request, session
 from flask_login import login_required
 
+from auth import manage_required
 from blueprints.lte import _modem_present
 from config import LTE_SERIAL_BAUD, LTE_SERIAL_PORT
 
 sms_bp = Blueprint('sms', __name__)
+
+
+@sms_bp.app_context_processor
+def sms_template_context():
+    def sms_csrf_token():
+        if 'sms_csrf_token' not in session:
+            session['sms_csrf_token'] = secrets.token_hex(32)
+        return session['sms_csrf_token']
+    return {'sms_csrf_token': sms_csrf_token}
+
 
 GSM7 = (
     '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ\x1bÆæßÉ'
@@ -205,6 +217,67 @@ def _read_messages():
             'storage': storage.group(1),
             'used': int(storage.group(2)), 'capacity': int(storage.group(3)),
         }
+
+
+def _sms_storage_status(port):
+    response = _command(port, 'AT+CPMS?')
+    match = re.search(r'^\+CPMS:\s*"([A-Z]+)",\s*(\d+),\s*(\d+)', response, re.M)
+    if not match:
+        raise ValueError('Unable to read SMS storage information')
+    storage, used, capacity = match.group(1), int(match.group(2)), int(match.group(3))
+    if used > capacity:
+        raise ValueError('Invalid SMS storage usage')
+    return {'storage': storage, 'used': used, 'capacity': capacity}
+
+
+def _delete_all_messages():
+    """Delete all message types from current mem1 without changing SMS settings."""
+    attempted = False
+    with serial.Serial(port=LTE_SERIAL_PORT, baudrate=LTE_SERIAL_BAUD,
+                       timeout=0.2, write_timeout=3, exclusive=True) as port:
+        port.reset_input_buffer()
+        try:
+            response = _command(port, 'AT+CPIN?')
+            if not re.search(r'^\+CPIN:\s*READY\s*$', response, re.M):
+                raise ValueError('SMS unavailable: SIM is missing or requires a PIN')
+            before = _sms_storage_status(port)
+            attempted = True
+            # 3GPP/EC200A delflag=4 ignores index and deletes all types in mem1.
+            _command(port, 'AT+CMGD=1,4', timeout=30)
+            after = _sms_storage_status(port)
+            if after['storage'] != before['storage']:
+                raise ValueError('SMS storage changed during deletion')
+            return {'present': True, **after}
+        except (ValueError, serial.SerialException, OSError) as error:
+            if attempted:
+                raise ValueError('Delete result is uncertain. Messages may have been deleted; '
+                                 'refresh SMS before retrying.') from error
+            raise
+
+
+@sms_bp.route('/api/lte/sms/delete-all', methods=['POST'])
+@manage_required
+def delete_all_sms():
+    token = session.get('sms_csrf_token', '')
+    supplied = request.headers.get('X-CSRF-Token', '')
+    if not token or not secrets.compare_digest(token.encode(), supplied.encode()):
+        return jsonify(error='Invalid CSRF token; reload the page and try again'), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or data.get('confirm') is not True:
+        return jsonify(error='Explicit confirmation is required'), 400
+    if not _modem_present():
+        return jsonify(present=False, error='LTE module is not installed'), 503
+    try:
+        result = _delete_all_messages()
+    except (serial.SerialException, OSError):
+        return jsonify(present=_modem_present(),
+                       error='LTE modem is busy or unavailable. Please retry.'), 503
+    except ValueError as error:
+        return jsonify(present=_modem_present(), error=str(error)), 503
+    if result['used'] != 0:
+        return jsonify(**result, error='Delete command completed, but messages remain '
+                       '(possibly newly received). Refresh SMS before retrying.'), 409
+    return jsonify(**result, message='All messages deleted from SMS storage ' + result['storage'] + '.')
 
 
 @sms_bp.after_request

@@ -169,8 +169,16 @@ seconds. It does not use the browser's timezone or set the device clock.
 - All signed-in users can read received SMS. Opening the tab or clicking
   **Refresh** loads sender, modem timestamp, unread/read status, and message text.
   Loading marks unread SMS as read on the modem; the displayed status is from
-  before that read. There is no background SMS polling, sending, deletion,
-  or browser persistence.
+  before that read. There is no background SMS polling, sending, or browser persistence.
+- **Delete All** — Admin/dec only, with explicit confirmation and a session CSRF
+  token. Deletes every message type (including unread, sent and unsent messages
+  not displayed in the received-message list) from the modem's currently selected
+  read/delete storage. Other storage areas are not selected or cleared.
+  Uses `AT+CMGD=1,4` in one exclusive serial session and verifies storage usage
+  afterward. Uncertain or incomplete results require manual Refresh; no automatic
+  deletion retry occurs. Reading and deleting share a UI busy guard.
+- **Columns** — Sender is sized for about 15 monospace characters; longer values
+  wrap without losing data. DateTime is the stored SMS timestamp, not device time.
 - Reads the modem's currently selected SMS storage (`AT+CPMS?`) and reports
   used/total slots. It does not switch storage or change message routing.
   Long messages appear as numbered parts; only stored received messages are shown.
@@ -180,6 +188,8 @@ seconds. It does not use the browser's timezone or set the device clock.
   SIM/PIN, unsupported firmware, busy-port and timeout errors are reported.
   If another modem operation is active, wait for it to finish and retry.
 - `GET /api/lte/sms` requires login and returns uncached message data.
+- `POST /api/lte/sms/delete-all` requires admin/dec, `X-CSRF-Token`, and
+  JSON `{"confirm": true}`. All SMS responses are uncached.
 - Hardware-mocked tests: `python -m unittest discover -s tests -p "test_sms.py" -v`.
   Frontend checks: `node tests/test_sms_ui.js`.
 
@@ -341,7 +351,7 @@ amr_gateway_webui/
 | POST   | `/api/auth/change-password`     | any    | Change own password             |
 | POST   | `/api/auth/reset-password`      | admin + CSRF | Reset dec/amr to 1234       |
 
-Reboot, Connection Manager toggle, admin password reset, Sync Server Time, and CSV upload use session CSRF tokens;
+Reboot, Connection Manager toggle, admin password reset, Sync Server Time, CSV upload, and SMS deletion use session CSRF tokens;
 this does not imply CSRF coverage for every legacy endpoint.
 
 ## Validation

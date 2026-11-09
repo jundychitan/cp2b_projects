@@ -11,7 +11,7 @@ from flask_login import login_required
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import auth
-from blueprints import amr, connection, diagnostic, rtu
+from blueprints import amr, connection, diagnostic, rtu, sms
 
 
 class PasswordResetTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class PasswordResetTests(unittest.TestCase):
         app.config.update(TESTING=True, SECRET_KEY='test-only')
         auth.login_manager.init_app(app)
         for blueprint in (auth.auth_bp, amr.amr_bp, connection.connection_bp,
-                          diagnostic.diagnostic_bp, rtu.rtu_bp):
+                          diagnostic.diagnostic_bp, rtu.rtu_bp, sms.sms_bp):
             app.register_blueprint(blueprint)
 
         @app.route('/')

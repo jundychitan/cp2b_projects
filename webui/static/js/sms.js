@@ -1,8 +1,19 @@
 /** SMS is loaded on demand, never polled or stored in browser storage. */
 let smsBusy = false;
 let smsPresenceRequest = null;
+let smsModemPresent = false;
+
+function setSmsBusy(busy) {
+  smsBusy = busy;
+  document.getElementById('smsRefreshBtn').disabled = busy;
+  const remove = document.getElementById('smsDeleteAllBtn');
+  if (remove) remove.disabled = busy || !smsModemPresent;
+}
 
 function updateSmsPresence(present) {
+  smsModemPresent = present === true;
+  const remove = document.getElementById('smsDeleteAllBtn');
+  if (remove) remove.disabled = smsBusy || !smsModemPresent;
   const nav = document.getElementById('smsNavItem');
   if (!nav) return;
   nav.classList.toggle('d-none', present !== true);
@@ -42,12 +53,11 @@ async function refreshSmsPresence() {
 
 async function loadSmsMessages() {
   if (smsBusy) return;
-  smsBusy = true;
+  setSmsBusy(true);
   const button = document.getElementById('smsRefreshBtn');
   const status = document.getElementById('smsStatus');
   const error = document.getElementById('smsError');
   const body = document.getElementById('smsMessages');
-  button.disabled = true;
   button.textContent = 'Reading…';
   status.textContent = 'Reading SMS messages…';
   error.classList.add('d-none');
@@ -65,8 +75,9 @@ async function loadSmsMessages() {
     messages.forEach(message => {
       const row = document.createElement('tr');
       [message.index, message.sender, message.timestamp,
-        message.status === 'REC UNREAD' ? 'Unread' : 'Read', message.text].forEach(value => {
+        message.status === 'REC UNREAD' ? 'Unread' : 'Read', message.text].forEach((value, index) => {
         const cell = document.createElement('td');
+        if (index === 1) cell.className = 'sms-sender';
         cell.textContent = String(value ?? '');
         cell.style.whiteSpace = 'pre-wrap';
         cell.style.overflowWrap = 'anywhere';
@@ -82,15 +93,54 @@ async function loadSmsMessages() {
     error.textContent = err.message;
     error.classList.remove('d-none');
   } finally {
-    smsBusy = false;
-    button.disabled = false;
+    setSmsBusy(false);
     button.textContent = 'Refresh';
+  }
+}
+
+async function deleteAllSmsMessages() {
+  if (!CAN_MANAGE || smsBusy || !smsModemPresent) return;
+  if (!confirm('Delete ALL messages from the modem\'s currently selected SMS storage? '
+      + 'This includes read, unread, sent and unsent messages, even those not shown here. '
+      + 'This cannot be undone.')) return;
+  setSmsBusy(true);
+  const button = document.getElementById('smsDeleteAllBtn');
+  const status = document.getElementById('smsStatus');
+  const error = document.getElementById('smsError');
+  button.textContent = 'Deleting…';
+  status.textContent = 'Deleting SMS messages…';
+  error.classList.add('d-none');
+  try {
+    const response = await fetch('/api/lte/sms/delete-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': button.dataset.csrfToken },
+      body: JSON.stringify({ confirm: true }),
+    });
+    if (response.redirected || response.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    const data = await response.json();
+    if (typeof data.present === 'boolean') updateSmsPresence(data.present);
+    if (!response.ok) throw new Error(data.error || 'SMS deletion was not confirmed. Refresh before retrying.');
+    if (data.used !== 0) throw new Error('SMS deletion was not confirmed. Refresh before retrying.');
+    document.getElementById('smsMessages').replaceChildren();
+    status.textContent = `${data.message} (${data.used}/${data.capacity} slots used).`;
+  } catch (err) {
+    status.textContent = 'SMS deletion was not confirmed.';
+    error.textContent = err.message + ' Refresh SMS to check the current messages.';
+    error.classList.remove('d-none');
+  } finally {
+    setSmsBusy(false);
+    button.textContent = 'Delete All';
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sms-tab').addEventListener('shown.bs.tab', loadSmsMessages);
   document.getElementById('smsRefreshBtn').addEventListener('click', loadSmsMessages);
+  const remove = document.getElementById('smsDeleteAllBtn');
+  if (remove) remove.addEventListener('click', deleteAllSmsMessages);
   document.getElementById('mainTabs').addEventListener('shown.bs.tab', refreshSmsPresence);
   refreshSmsPresence();
 });

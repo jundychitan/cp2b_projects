@@ -1,16 +1,25 @@
-<!-- SMS Messages: read-only for all signed-in accounts. -->
+<!-- SMS Messages: all signed-in users can read; admin/dec can delete. -->
+<style>
+  .sms-table { table-layout: fixed; min-width: 48rem; }
+  .sms-table .sms-sender { font-family: monospace; width: calc(15ch + 0.5rem); }
+</style>
 <div class="card mt-3">
   <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
     <h5 class="mb-0">SMS Messages</h5>
-    <button type="button" class="btn btn-outline-secondary btn-sm" id="smsRefreshBtn">Refresh</button>
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="smsRefreshBtn">Refresh</button>
+      {% if current_user.can_manage %}
+      <button type="button" class="btn btn-outline-danger btn-sm" id="smsDeleteAllBtn"
+              data-csrf-token="{{ sms_csrf_token() }}" disabled>Delete All</button>
+      {% endif %}
+    </div>
   </div>
   <div class="card-body">
-    <p class="text-muted small">Received messages in the modem's current SMS storage. Loading messages marks unread SMS as read on the modem; the status column shows the status before this read. Messages are not deleted. Long messages appear as separate numbered parts. Binary or unsupported encodings are shown as hexadecimal data.</p>
     <p id="smsStatus" role="status" aria-live="polite">Open this tab to read SMS messages.</p>
     <div id="smsError" class="alert alert-danger d-none" role="alert"></div>
     <div class="table-responsive">
-      <table class="table table-striped table-sm align-middle">
-        <thead><tr><th scope="col">Index</th><th scope="col">Sender</th><th scope="col">Received (SMS timestamp)</th><th scope="col">Status</th><th scope="col">Message</th></tr></thead>
+      <table class="table table-striped table-sm align-middle sms-table">
+        <thead><tr><th scope="col" style="width: 6ch;">Index</th><th scope="col" class="sms-sender">Sender</th><th scope="col" style="width: 24ch;">DateTime</th><th scope="col" style="width: 8ch;">Status</th><th scope="col">Message</th></tr></thead>
         <tbody id="smsMessages"></tbody>
       </table>
     </div>

@@ -11,7 +11,7 @@ from flask import Flask, render_template
 from flask_login import login_required
 
 import auth
-from blueprints import amr, connection, diagnostic, rtu
+from blueprints import amr, connection, diagnostic, rtu, sms
 
 
 def service_state(boot='enabled', active='active', sub='running'):
@@ -24,7 +24,7 @@ class ConnectionTests(unittest.TestCase):
         app = Flask(__name__, template_folder=str(Path(__file__).resolve().parents[1] / 'templates'))
         app.config.update(TESTING=True, SECRET_KEY='test-only')
         auth.login_manager.init_app(app)
-        for blueprint in (auth.auth_bp, amr.amr_bp, connection.connection_bp, rtu.rtu_bp, diagnostic.diagnostic_bp):
+        for blueprint in (auth.auth_bp, amr.amr_bp, connection.connection_bp, rtu.rtu_bp, diagnostic.diagnostic_bp, sms.sms_bp):
             app.register_blueprint(blueprint)
 
         @app.route('/')
