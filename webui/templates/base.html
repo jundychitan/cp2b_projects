@@ -38,7 +38,7 @@
       <div class="collapse navbar-collapse" id="navbarRight">
         <div class="ms-auto d-flex flex-column align-items-end gap-1 navbar-nav-right">
           <div class="d-flex flex-wrap justify-content-end align-items-center gap-2" id="accountActions">
-            <span class="navbar-account-green fw-bold" id="loginDetails">Logged in as: {{ current_user.username }}</span>
+            <span class="text-white fw-normal" id="loginDetails">Logged in as: <span class="navbar-account-green fw-bold">{{ current_user.username }}</span></span>
             <button class="btn btn-outline-light btn-sm" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">
               &#9790;
             </button>

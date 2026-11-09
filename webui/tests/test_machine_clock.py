@@ -70,11 +70,11 @@ class MachineClockTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 html = response.get_data(as_text=True)
                 navbar = html.split('<nav ', 1)[1].split('</nav>', 1)[0]
-                self.assertIn(f'Logged in as: {role}</span>', navbar)
+                self.assertIn(f'Logged in as: <span class="navbar-account-green fw-bold">{role}</span>', navbar)
                 self.assertNotIn('class="badge', navbar)
                 self.assertIn('id="machineClock"', navbar)
                 self.assertNotIn('Device time:', navbar)
-                self.assertIn('class="navbar-account-green fw-bold" id="loginDetails"', navbar)
+                self.assertIn('class="text-white fw-normal" id="loginDetails"', navbar)
                 self.assertIn('class="navbar-account-green small text-nowrap" id="machineClock"', navbar)
                 self.assertIn('flex-column align-items-end', navbar)
                 self.assertLess(navbar.index('>Logout</a>'), navbar.index('id="machineClock"'))
