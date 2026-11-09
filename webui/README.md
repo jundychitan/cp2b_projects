@@ -209,7 +209,9 @@ template tree when updating.
 - **IP Method** — Toggle between DHCP and Static IP for the `eth0` interface.
 - **IP Address / Subnet / Gateway** — Only editable when Static is selected. Applied to `ETH0`; cleanup preserves `ETH1` and `LTE`.
 - **Remote Server IP** — Saved to `/home/admin/projects/config_file/server_ip.txt`.
-- **Location** — Saved to `/home/admin/projects/config_file/location.cfg` as `location=<value>` (for example, `location=Building A`).
+- **Location** — Matches Orange Pi: saved to `/home/admin/projects/config_file/location.cfg`
+  as `location="<value>"` (for example, `location="Building A"`). Reads accept
+  quoted/unquoted values, whitespace around `=`, and legacy plain-text locations.
 
 ### AMR Setting
 - **Upload / Download** — Meter Batch File has Upload (admin/dec) and Download

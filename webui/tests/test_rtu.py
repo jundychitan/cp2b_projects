@@ -45,11 +45,11 @@ class LocationTests(unittest.TestCase):
             session['_fresh'] = True
 
     def test_save_and_reload_location(self):
-        for value in ('Building A', '', 'Zone=A', 'location=Building A'):
+        for value in ('Building A', '', 'Zone=A', 'location=Building A', 'Building "A"'):
             with self.subTest(value=value):
                 response = self.client.post('/api/rtu/location', json={'location': value})
                 self.assertEqual(response.status_code, 200)
-                self.assertEqual(self.location_file.read_text(), f'location={value}\n')
+                self.assertEqual(self.location_file.read_text(), f'location="{value}"\n')
                 response = self.client.get('/api/rtu/config')
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.get_json()['location'], value)
@@ -57,7 +57,31 @@ class LocationTests(unittest.TestCase):
     def test_save_trims_surrounding_whitespace(self):
         response = self.client.post('/api/rtu/location', json={'location': '  Building A  '})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.location_file.read_text(), 'location=Building A\n')
+        self.assertEqual(self.location_file.read_text(), 'location="Building A"\n')
+
+    def test_load_location_formats(self):
+        self.location_file.parent.mkdir()
+        for content, expected in (
+            ('location = "DEC"\n', 'DEC'),
+            ('location ="DEC"\n', 'DEC'),
+            ('location= "DEC"\n', 'DEC'),
+            ('  location \t= \t"DEC"  \n', 'DEC'),
+            ('location = DEC\n', 'DEC'),
+            ('location = ""\n', ''),
+            ('location = "Zone=A"\n', 'Zone=A'),
+            ('location="Building A"\n', 'Building A'),
+            ('location=""\n', ''),
+            ('location="Building "A""\n', 'Building "A"'),
+            ('location=Building A\n', 'Building A'),
+            ('location=Building "A"\n', 'Building "A"'),
+            ('location="Building A\n', '"Building A'),
+        ):
+            with self.subTest(content=content):
+                self.location_file.write_text(content)
+                response = self.client.get('/api/rtu/config')
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json()['location'], expected)
+                self.assertEqual(self.location_file.read_text(), content)
 
     def test_load_legacy_location(self):
         self.location_file.parent.mkdir()
@@ -72,12 +96,31 @@ class LocationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['location'], '')
 
+    def test_server_ip_save_and_reload_preserves_location(self):
+        self.location_file.parent.mkdir()
+        self.location_file.write_text('location="Building A"\n')
+        before = self.location_file.read_bytes()
+        response = self.client.post('/api/rtu/server', json={'server_ip': '  10.2.3.4  '})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.server_file.read_text(), '10.2.3.4\n')
+        data = self.client.get('/api/rtu/config').get_json()
+        self.assertEqual(data['server_ip'], '10.2.3.4')
+        self.assertEqual(data['location'], 'Building A')
+        self.assertEqual(self.location_file.read_bytes(), before)
+
+    def test_blank_server_ip_does_not_overwrite_saved_server(self):
+        before = self.server_file.read_bytes()
+        for body in ({}, {'server_ip': ''}, {'server_ip': '   '}):
+            response = self.client.post('/api/rtu/server', json=body)
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(self.server_file.read_bytes(), before)
+
     def test_repeated_save_does_not_duplicate_prefix(self):
         self.client.post('/api/rtu/location', json={'location': 'Building A'})
         value = self.client.get('/api/rtu/config').get_json()['location']
         response = self.client.post('/api/rtu/location', json={'location': value})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.location_file.read_text(), 'location=Building A\n')
+        self.assertEqual(self.location_file.read_text(), 'location="Building A"\n')
 
 
 if __name__ == '__main__':

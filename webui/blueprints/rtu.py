@@ -99,8 +99,11 @@ def get_config():
     # Read config files
     server_ip = _read_file(SERVER_IP_FILE)
     location = _read_file(LOCATION_FILE)
-    if location.startswith('location='):
-        location = location.split('=', 1)[1]
+    key, separator, value = location.partition('=')
+    if separator and key.strip() == 'location':
+        location = value.strip()
+        if len(location) >= 2 and location.startswith('"') and location.endswith('"'):
+            location = location[1:-1]
 
     return jsonify({
         'method': method,
@@ -228,5 +231,5 @@ def set_location():
     data = request.get_json(silent=True) or {}
     location = data.get('location', '').strip()
 
-    _write_file(LOCATION_FILE, f'location={location}')
+    _write_file(LOCATION_FILE, f'location=\"{location}\"')
     return jsonify({'message': 'Location saved successfully'})
