@@ -2,6 +2,7 @@
 
 import subprocess
 import secrets
+from datetime import datetime
 
 from flask import Blueprint, jsonify, make_response, render_template, request, session
 from flask_login import login_required, logout_user
@@ -31,6 +32,20 @@ def rebooting():
 def ready():
     """Public liveness check: no authentication, system details, or commands."""
     response = jsonify({'status': 'ready'})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@diagnostic_bp.route('/api/diagnostic/time')
+@login_required
+def machine_time():
+    """Return the device clock and local offset, never the browser's timezone."""
+    now = datetime.now().astimezone()
+    response = jsonify({
+        'unix_ms': int(now.timestamp() * 1000),
+        'utc_offset_seconds': int(now.utcoffset().total_seconds()),
+        'timezone': now.tzname() or 'UTC',
+    })
     response.headers['Cache-Control'] = 'no-store'
     return response
 

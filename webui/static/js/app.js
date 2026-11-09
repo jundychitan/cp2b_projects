@@ -468,7 +468,7 @@ function renderMeterTable(meters) {
   const tbody = document.getElementById('meterTableBody');
   tbody.innerHTML = '';
 
-  meters.forEach((m, i) => {
+  meters.slice(0, MAX_METERS).forEach((m, i) => {
     const tr = document.createElement('tr');
     tr.dataset.index = i;
     tr.innerHTML = `
@@ -565,7 +565,10 @@ async function saveMeters() {
 async function loadMeters() {
   await loadMeterConfigs();
   const data = await apiGet('/api/amr/meters');
-  if (data) renderMeterTable(data.meters || []);
+  if (data) {
+    renderMeterTable(data.meters || []);
+    if (data.truncated) showAlert('meter_batch.csv exceeded 32 entries. Only the first 32 were kept.', 'warning');
+  }
 }
 
 // ============================================================================

@@ -140,6 +140,12 @@ files does not update an older installed unit. Verify with
 
 ## Tab Details
 
+The navbar shows **Logged in as: &lt;username&gt;** without repeating the role.
+**Device time** displays the gateway's local date/time and timezone, ticking
+every second. It resynchronizes with the device every 30 seconds, pauses when
+the page is hidden, and reports Unavailable if no fresh sample exists for 90
+seconds. It does not use the browser's timezone or set the device clock.
+
 ### LTE Setting
 - **SIM/IP** — Retains CP2B's SIM status and assigned modem IP display.
 - **Status** — Retains `AT+QPING` internet testing against the first watchdog target.
@@ -161,6 +167,12 @@ files does not update an older installed unit. Verify with
 - **Location** — Saved to `/home/admin/projects/config_file/location.cfg` as `location=<value>` (for example, `location=Building A`).
 
 ### AMR Setting
+- **Meter limit** — Loading `meter_batch.csv` keeps only the first 32 valid
+  entries. Oversized files are automatically and permanently trimmed to those
+  entries, with a UI warning. Files within the limit are not rewritten. Blank
+  or incomplete rows are not counted; existing two-column entries are supported.
+  CSV writes use atomic replacement and a `meter_batch.csv.lock` sidecar to
+  serialize web UI workers. The existing save/Add limit remains 32.
 - **Sync Server Time** — Checkbox saved immediately. Checked creates an empty
   `/home/admin/projects/config_file/sync_server`; unchecked removes it. Existing
   marker state is loaded when opening AMR Setting. Admin/dec can change it;
@@ -270,6 +282,7 @@ amr_gateway_webui/
 | POST   | `/api/diagnostic/lte-check`     | any    | Query detected modem            |
 | GET    | `/rebooting`                    | public | Standalone reboot monitor       |
 | GET    | `/api/diagnostic/ready`         | public | Uncached readiness response     |
+| GET    | `/api/diagnostic/time`          | any    | Uncached device time and timezone |
 | POST   | `/api/auth/change-password`     | any    | Change own password             |
 | POST   | `/api/auth/reset-password`      | admin + CSRF | Reset dec/amr to 1234       |
 
@@ -288,6 +301,8 @@ node tests/test_login_ui.js
 node tests/test_diagnostic_ui.js
 node tests/test_password_reset_ui.js
 node tests/test_sync_server_time_ui.js
+node tests/test_meter_limit_ui.js
+node tests/test_machine_clock_ui.js
 ```
 
 Tests use temporary state and mocked hardware, package, and service operations.

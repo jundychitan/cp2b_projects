@@ -7,6 +7,9 @@ import re
 import secrets
 import stat
 import subprocess
+import tempfile
+import threading
+from contextlib import contextmanager
 
 from flask import Blueprint, jsonify, request, session
 from flask_login import login_required
@@ -15,6 +18,8 @@ from auth import manage_required
 from config import AMR_METER_DIR, AMR_UPLOAD_DIR, METER_BATCH_FILE, PROCESS_METERS_SCRIPT, SYNC_SERVER_FILE
 
 amr_bp = Blueprint('amr', __name__)
+MAX_METERS = 32
+_meter_thread_lock = threading.Lock()
 
 
 @amr_bp.app_context_processor
@@ -163,31 +168,80 @@ def set_autoread():
 # Meter Batch File
 # ---------------------------------------------------------------------------
 
+@contextmanager
+def _meter_batch_lock():
+    """Serialize web workers using a stable sidecar, not the replaced CSV inode."""
+    os.makedirs(os.path.dirname(METER_BATCH_FILE), exist_ok=True)
+    with _meter_thread_lock, open(METER_BATCH_FILE + '.lock', 'a+b') as lock:
+        try:
+            import fcntl
+        except ImportError:
+            # Windows development tests use the thread lock; devices use flock.
+            yield
+        else:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _write_meter_rows(rows, original_stat=None):
+    """Atomically publish complete CSV rows, preserving existing access metadata."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w', newline='', dir=os.path.dirname(METER_BATCH_FILE), delete=False
+        ) as f:
+            temporary = f.name
+            csv.writer(f).writerows(rows)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(temporary, stat.S_IMODE(original_stat.st_mode) if original_stat else 0o644)
+        if original_stat and hasattr(os, 'geteuid') and os.geteuid() == 0:
+            os.chown(temporary, original_stat.st_uid, original_stat.st_gid)
+        os.replace(temporary, METER_BATCH_FILE)
+    finally:
+        if temporary is not None and os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 @amr_bp.route('/api/amr/meters')
 @login_required
 def get_meters():
-    """Read meter batch CSV and return as JSON list."""
-    meters = []
+    """Load at most 32 valid entries and persist that limit for oversized files."""
+    rows = []
+    truncated = False
     try:
-        with open(METER_BATCH_FILE, 'r', newline='') as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if len(row) >= 3:
-                    meters.append({
-                        'meter_sn': row[0].strip(),
-                        'config_file': row[1].strip(),
-                        'alt_address': row[2].strip(),
-                    })
-                elif len(row) == 2:
-                    meters.append({
-                        'meter_sn': row[0].strip(),
-                        'config_file': row[1].strip(),
-                        'alt_address': '',
-                    })
-    except FileNotFoundError:
-        pass
+        try:
+            os.stat(METER_BATCH_FILE)
+        except FileNotFoundError:
+            response = jsonify({'meters': [], 'truncated': False})
+            response.headers['Cache-Control'] = 'no-store'
+            return response
+        with _meter_batch_lock():
+            with open(METER_BATCH_FILE, 'r', newline='') as f:
+                original_stat = os.fstat(f.fileno())
+                for row in csv.reader(f):
+                    if len(row) < 2:
+                        continue
+                    if len(rows) == MAX_METERS:
+                        truncated = True
+                        break
+                    rows.append(row)
+            if truncated:
+                _write_meter_rows(rows, original_stat)
+    except (OSError, csv.Error, UnicodeError):
+        return jsonify({'error': 'Unable to load or trim meter_batch.csv; check the file and permissions'}), 500
 
-    return jsonify({'meters': meters})
+    meters = [{
+        'meter_sn': row[0].strip(),
+        'config_file': row[1].strip(),
+        'alt_address': row[2].strip() if len(row) >= 3 else '',
+    } for row in rows]
+    response = jsonify({'meters': meters, 'truncated': truncated})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @amr_bp.route('/api/amr/meters', methods=['POST'])
@@ -197,19 +251,23 @@ def save_meters():
     data = request.get_json(silent=True) or {}
     meters = data.get('meters', [])
 
-    if len(meters) > 32:
+    if len(meters) > MAX_METERS:
         return jsonify({'error': 'Maximum of 32 meters allowed'}), 400
 
-    os.makedirs(AMR_UPLOAD_DIR, exist_ok=True)
-
-    with open(METER_BATCH_FILE, 'w', newline='') as f:
-        writer = csv.writer(f)
-        for m in meters:
-            writer.writerow([
-                m.get('meter_sn', '').strip(),
-                m.get('config_file', '').strip(),
-                m.get('alt_address', '').strip(),
-            ])
+    rows = [[
+        m.get('meter_sn', '').strip(),
+        m.get('config_file', '').strip(),
+        m.get('alt_address', '').strip(),
+    ] for m in meters]
+    try:
+        with _meter_batch_lock():
+            try:
+                original_stat = os.stat(METER_BATCH_FILE)
+            except FileNotFoundError:
+                original_stat = None
+            _write_meter_rows(rows, original_stat)
+    except OSError:
+        return jsonify({'error': 'Unable to save meter_batch.csv; check directory permissions'}), 500
 
     return jsonify({'message': f'Saved {len(meters)} meter(s) to meter_batch.csv'})
 

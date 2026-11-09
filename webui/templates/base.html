@@ -36,12 +36,8 @@
       </button>
       <div class="collapse navbar-collapse" id="navbarRight">
         <div class="ms-auto d-flex flex-wrap align-items-center gap-2 navbar-nav-right">
-          <span class="text-light">
-            {{ current_user.username }}
-            <span class="badge bg-{{ 'success' if current_user.can_manage else 'secondary' }}">
-              {{ current_user.role }}
-            </span>
-          </span>
+          <span class="text-light small">Device time: <span id="machineClock">Loading...</span></span>
+          <span class="text-light" id="loginDetails">Logged in as: {{ current_user.username }}</span>
           <button class="btn btn-outline-light btn-sm" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">
             &#9790;
           </button>
@@ -200,5 +196,6 @@
   </script>
   <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/machine_clock.js') }}" defer></script>
 </body>
 </html>
