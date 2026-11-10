@@ -70,6 +70,7 @@ class LteStatusTests(unittest.TestCase):
                 '+QSPN: "Carrier","Carrier",0\r\nOK',
                 '+QNWINFO: "FDD LTE","00101","LTE BAND 3",1300\r\nOK',
                 '+CSQ: 25,99\r\nOK',
+                '+CNUM: "","+1234567890",145\r\nOK',
             ]) as send:
                 data = self.client.get('/api/lte/status').get_json()
                 self.assertEqual(data, {
@@ -77,8 +78,10 @@ class LteStatusTests(unittest.TestCase):
                     'carrier': 'Carrier', 'access': 'FDD LTE',
                     'band': 'LTE BAND 3', 'signal': '25',
                     'sim_status': 'Inserted', 'ip_address': '10.1.2.3',
+                    'mobile_number': '+1234567890',
                 })
-                self.assertEqual(send.call_count, 6)
+                self.assertEqual(send.call_count, 7)
+                send.assert_any_call('AT+CNUM')
                 send.assert_any_call('AT+QPING=1,"8.8.8.8",4,1', timeout=10)
 
     def test_locked_sim_retains_sim_status_and_skips_internet_checks(self):
@@ -96,7 +99,7 @@ class LteStatusTests(unittest.TestCase):
             with patch.object(lte, '_get_watchdog_target', return_value='example.invalid'):
                 with patch.object(lte, '_send_at', side_effect=[
                     '+CPIN: READY\r\nOK', '+CGPADDR: 1,"10.1.2.3"\r\nOK',
-                    '+QPING: 569\r\nOK', 'OK', 'OK', 'OK',
+                    '+QPING: 569\r\nOK', 'OK', 'OK', 'OK', 'OK',
                 ]) as send:
                     data = self.client.get('/api/lte/status').get_json()
         self.assertEqual(data['status'], 'Disconnected')

@@ -148,6 +148,9 @@ async function loadLteStatus() {
       const simEl = document.getElementById('lteSimStatus');
       simEl.value = data.sim_status || '--';
       simEl.style.color = data.sim_status === 'Inserted' ? 'green' : 'red';
+      document.getElementById('lteMobileNumber').value =
+        data.sim_status === 'Inserted' && data.available !== false
+          ? (data.mobile_number || 'Not available') : '--';
       document.getElementById('lteIpAddress').value = data.ip_address || '--';
       document.getElementById('lteStatus').value = data.status || '--';
       document.getElementById('lteCarrier').value = data.carrier || '--';
@@ -156,6 +159,7 @@ async function loadLteStatus() {
       document.getElementById('lteSignal').value = data.signal || '--';
     } catch (error) {
       document.getElementById('lteStatus').value = 'Unavailable';
+      document.getElementById('lteMobileNumber').value = '--';
       updateDiagnosticLtePresence(false);
       const rebootButton = document.getElementById('lteRebootBtn');
       if (rebootButton) rebootButton.disabled = true;

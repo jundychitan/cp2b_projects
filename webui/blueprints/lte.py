@@ -1,6 +1,8 @@
 """LTE Setting API routes — EC200A AT command interface."""
 
+import csv
 import os
+import re
 import subprocess
 import time
 
@@ -24,7 +26,7 @@ def _unavailable_status(present):
         'present': present,
         'available': False,
         'status': 'Unavailable' if present else 'Not installed',
-        'sim_status': '', 'ip_address': '',
+        'sim_status': '', 'ip_address': '', 'mobile_number': '',
         'carrier': '', 'access': '', 'band': '', 'signal': '',
     })
 
@@ -75,6 +77,33 @@ def _parse_at_response(response, prefix):
         line = line.strip()
         if line.startswith(prefix):
             return line[len(prefix):].strip()
+    return ''
+
+
+def _parse_subscriber_number(response):
+    """Read CNUM's number field, not the label, IMSI or SIM serial number."""
+    lines = [line.strip() for line in response.splitlines()]
+    if 'OK' not in lines or any(
+        line == 'ERROR' or line.startswith(('+CME ERROR:', '+CMS ERROR:'))
+        for line in lines
+    ):
+        return ''
+    for line in lines:
+        if not line.startswith('+CNUM:'):
+            continue
+        try:
+            fields = next(csv.reader([line[len('+CNUM:'):].strip()],
+                                     skipinitialspace=True, strict=True))
+        except csv.Error:
+            continue
+        if len(fields) < 3:
+            continue
+        number = fields[1].strip()
+        if not re.fullmatch(r'\+?[0-9]+', number):
+            continue
+        if fields[2].strip() == '145' and not number.startswith('+'):
+            number = '+' + number
+        return number
     return ''
 
 
@@ -129,6 +158,7 @@ def get_status():
             'present': True,
             'available': True,
             'sim_status': sim_status,
+            'mobile_number': '',
             'ip_address': '--',
             'status': '--',
             'carrier': '--',
@@ -173,10 +203,15 @@ def get_status():
     csq_parts = [p.strip() for p in csq_line.split(',')]
     signal = csq_parts[0] if csq_parts else ''
 
+    # Some carriers leave the SIM's own-number record empty. Do not infer it
+    # from IMSI/ICCID or let an unsupported CNUM query discard other status.
+    mobile_number = _parse_subscriber_number(_send_at('AT+CNUM'))
+
     return jsonify({
         'present': True,
         'available': True,
         'sim_status': sim_status,
+        'mobile_number': mobile_number,
         'ip_address': ip_address,
         'status': status,
         'carrier': carrier,

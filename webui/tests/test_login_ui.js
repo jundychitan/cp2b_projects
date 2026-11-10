@@ -13,7 +13,8 @@ function polling(canManage = true) {
   const pending = [];
   const elements = {};
   for (const id of ['lteStatus', 'lteCarrier', 'lteAccess', 'lteBand', 'lteSignal',
-    'lteRebootBtn', 'lteRefreshBtn', 'diagLteCheckBtn', 'lteSimStatus', 'lteIpAddress']) {
+    'lteRebootBtn', 'lteRefreshBtn', 'diagLteCheckBtn', 'lteSimStatus', 'lteIpAddress',
+    'lteMobileNumber']) {
     elements[id] = { style: {} };
   }
   const context = vm.createContext({
@@ -35,7 +36,7 @@ function polling(canManage = true) {
   return {
     context, timers, requests, elements,
     complete: async (data = { status: 'Connected', carrier: 'Test', available: true, present: true,
-      sim_status: 'Inserted', ip_address: '10.1.2.3' }) => {
+      sim_status: 'Inserted', ip_address: '10.1.2.3', mobile_number: '+1234567890' }) => {
       const request = pending.shift();
       assert.ok(request);
       request.resolve({ status: 200, json: async () => data });
@@ -104,6 +105,7 @@ async function main() {
   assert.equal(poll.elements.lteSimStatus.value, 'Inserted');
   assert.equal(poll.elements.lteSimStatus.style.color, 'green');
   assert.equal(poll.elements.lteIpAddress.value, '10.1.2.3');
+  assert.equal(poll.elements.lteMobileNumber.value, '+1234567890');
   assert.equal(poll.timers.size, 1);
   poll.context.startLtePolling();
   assert.equal(poll.requests.length, 1);
@@ -121,6 +123,7 @@ async function main() {
   assert.equal(poll.requests.length, 3, 'Reuse the in-flight request when reopening');
   await poll.fail();
   assert.equal(poll.elements.lteStatus.value, 'Unavailable');
+  assert.equal(poll.elements.lteMobileNumber.value, '--', 'Do not retain a stale number after errors');
   assert.equal(poll.timers.size, 1, 'Retry after a transient failure');
   poll.context.stopLtePolling();
   assert.equal(poll.timers.size, 0, 'Cancel scheduled retries when hidden');
@@ -134,6 +137,7 @@ async function main() {
   assert.equal(absent.elements.lteCarrier.value, '--');
   assert.equal(absent.elements.lteSimStatus.value, '--');
   assert.equal(absent.elements.lteIpAddress.value, '--');
+  assert.equal(absent.elements.lteMobileNumber.value, '--');
   await absent.tick(60000);
   await absent.complete();
   assert.equal(absent.elements.lteStatus.value, 'Connected');
@@ -182,7 +186,26 @@ async function main() {
   await readonlyRefresh;
   assert.equal(readonly.elements.lteRebootBtn.disabled, true);
   assert.equal(readonly.elements.lteRefreshBtn.disabled, false);
+  assert.equal(readonly.elements.lteMobileNumber.value, '+1234567890');
   assert.equal(readonly.timers.size, 0, 'A refresh outside active polling does not start a polling loop');
+
+  const numberStates = polling();
+  for (const [data, expected] of [
+    [{ sim_status: 'Inserted', available: true }, 'Not available'],
+    [{ sim_status: 'Inserted', available: true, mobile_number: '' }, 'Not available'],
+    [{ sim_status: 'Inserted', available: true, mobile_number: '0012345' }, '0012345'],
+    [{ sim_status: 'SIM PIN', available: true, mobile_number: '+1234567890' }, '--'],
+    [{ sim_status: 'Not Detected', available: true }, '--'],
+    [{ sim_status: 'Inserted', available: false, mobile_number: '+1234567890' }, '--'],
+  ]) {
+    const refresh = numberStates.context.refreshLteStatus();
+    await numberStates.complete(data);
+    await refresh;
+    assert.equal(numberStates.elements.lteMobileNumber.value, expected);
+  }
+  const template = fs.readFileSync(path.join(__dirname, '../templates/lte.html'), 'utf8');
+  assert.match(template, /for="lteMobileNumber"/);
+  assert.match(template, /id="lteMobileNumber" readonly/);
 
   loginFeedback();
   console.log('Login responsiveness and LTE polling checks passed');

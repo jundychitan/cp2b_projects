@@ -147,6 +147,10 @@ the page is hidden, and reports Unavailable if no fresh sample exists for 90
 seconds. It does not use the browser's timezone or set the device clock.
 
 ### LTE Status
+- **SIM Mobile Number** — When the SIM is ready, displays its stored subscriber
+  number from `AT+CNUM`. Shows **Not available** if the carrier has not stored a
+  number or the modem cannot report it; shows `--` for a missing/locked SIM or
+  unavailable status. This is not the IMSI/ICCID and does not change SIM records.
 - Shown only when the configured modem device is detected, using the same
   presence rule as SMS Messages. This is hardware presence, not internet
   connectivity: detected but disconnected/unresponsive modems remain visible.
