@@ -1,0 +1,75 @@
+CP2B IOT Gateway New INstallation
+
+1. Update your package lists
+    sudo apt update
+
+2. install php
+    For Apache web server:
+    sudo apt install php libapache2-mod-php php-cli php-mysql php-curl php-xml php-mbstring
+
+3. Install the OpenSSH server
+    sudo apt install -y openssh-server
+    sudo systemctl enable --now ssh    
+
+4. Install Curl
+    sudo apt install curl
+
+4. Install crontab
+    sudo apt install cron -y
+    sudo systemctl enable cron    
+    sudo systemctl start cron
+
+    add the folloing to cron job
+
+    10 0 * * * touch /tmp/lp_read
+    10 1 * * * touch /tmp/lp_read
+    10 2 * * * touch /tmp/lp_read
+    10 3 * * * touch /tmp/lp_read
+    10 4 * * * touch /tmp/lp_read
+    10 5 * * * touch /tmp/lp_read
+    */5 * * * * cd /projects/amr/scripts/ && ./post_data.sh &
+
+5. Configure LTE 
+    
+    # 1. Stop and disable the service: (This is for CP2B IOT Gateway Only)
+        sudo systemctl stop pppoe.service
+        sudo systemctl disable pppoe.service
+
+    # 2. Completely block it from being started manually or by other services:
+        sudo systemctl mask pppoe.service
+
+    # 3. Configure EC200 and EC25 to connect to internet directly 
+    using ECM Mode (Ethernet Control Model)
+        minicom -D /dev/ttyUSB2 -b 115200
+        AT+QCFG="usbnet",1 (Switches the module to ECM mode - EC25 and EC200A)
+        AT+QNETDEVCTL=3,1,1 (for EC200A only)    
+
+6. Configure Network Manager
+
+    # 1. Set default routes (the lower number is priority route)
+        sudo nmcli connection modify "ETH0" ipv4.route-metric 100
+        sudo nmcli connection modify "LTE" ipv4.route-metric 200
+        sudo nmcli connection modify "ETH1" ipv4.route-metric 300
+        sudo nmcli connection reload
+
+7. Clone the cp2b_projects from github to /home/admin/projects
+    git clone https://jundychitan:cc80ce4eec9bd957f283f0be1d8f3239d38fac79@github.com/jundychitan/cp2b_projects.git
+
+8. Prepare the amr 
+    cd projects/amr/upload
+    cp -p meter_batch.bak meter_batch.csv
+
+9. Install TCP Client
+    cd projects/tcp_client
+    * copy the default client_config.json from the template
+    cp -p copy_to_client_config.json client.config.json
+    sudo ./install.sh --install-dir /home/admin/projects/tcp_client
+
+    *setup remote tunneling for remote web ui
+    ./setup_ssh_tunnel.sh 139.162.31.224
+
+10. Install WEB UI
+    cd projects/webui
+    sudo ./install.sh
+
+11. 
