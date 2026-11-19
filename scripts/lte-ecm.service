@@ -1,0 +1,14 @@
+[Unit]
+Description=Configure Quectel EC200 ECM and NetworkManager route metrics
+Requires=NetworkManager.service
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lte-ecm --config /etc/lte-ecm.json
+TimeoutStartSec=15min
+Restart=no
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
