@@ -12,7 +12,7 @@ function polling(canManage = true) {
   const requests = [];
   const pending = [];
   const elements = {};
-  for (const id of ['lteStatus', 'lteCarrier', 'lteAccess', 'lteBand', 'lteSignal',
+  for (const id of ['lteCarrier', 'lteAccess', 'lteBand', 'lteSignal',
     'lteRebootBtn', 'lteRefreshBtn', 'diagLteCheckBtn', 'lteSimStatus', 'lteIpAddress',
     'lteMobileNumber']) {
     elements[id] = { style: {} };
@@ -101,7 +101,7 @@ async function main() {
   assert.equal(poll.requests.length, 1, 'Only one request while the modem is slow');
   assert.equal(poll.timers.size, 0, 'Do not schedule another check until completion');
   await poll.complete();
-  assert.equal(poll.elements.lteStatus.value, 'Connected');
+  assert.equal(poll.elements.lteCarrier.value, 'Test');
   assert.equal(poll.elements.lteSimStatus.value, 'Inserted');
   assert.equal(poll.elements.lteSimStatus.style.color, 'green');
   assert.equal(poll.elements.lteIpAddress.value, '10.1.2.3');
@@ -122,7 +122,6 @@ async function main() {
   poll.context.startLtePolling();
   assert.equal(poll.requests.length, 3, 'Reuse the in-flight request when reopening');
   await poll.fail();
-  assert.equal(poll.elements.lteStatus.value, 'Unavailable');
   assert.equal(poll.elements.lteMobileNumber.value, '--', 'Do not retain a stale number after errors');
   assert.equal(poll.timers.size, 1, 'Retry after a transient failure');
   poll.context.stopLtePolling();
@@ -131,7 +130,6 @@ async function main() {
   const absent = polling();
   absent.context.startLtePolling();
   await absent.complete({ status: 'Not installed', available: false, present: false });
-  assert.equal(absent.elements.lteStatus.value, 'Not installed');
   assert.equal(absent.elements.diagLteCheckBtn.disabled, true);
   assert.equal(absent.elements.lteRebootBtn.disabled, true);
   assert.equal(absent.elements.lteCarrier.value, '--');
@@ -140,7 +138,7 @@ async function main() {
   assert.equal(absent.elements.lteMobileNumber.value, '--');
   await absent.tick(60000);
   await absent.complete();
-  assert.equal(absent.elements.lteStatus.value, 'Connected');
+  assert.equal(absent.elements.lteCarrier.value, 'Test');
   assert.equal(absent.elements.diagLteCheckBtn.disabled, false);
   assert.equal(absent.elements.lteRebootBtn.disabled, false);
   await absent.tick(5000);
@@ -206,6 +204,13 @@ async function main() {
   const template = fs.readFileSync(path.join(__dirname, '../templates/lte.html'), 'utf8');
   assert.match(template, /for="lteMobileNumber"/);
   assert.match(template, /id="lteMobileNumber" readonly/);
+  assert.doesNotMatch(template, /id="lteStatus"/);
+  assert.doesNotMatch(template, />Status<\/label>/);
+  assert.doesNotMatch(source('app.js'), /getElementById\(['"]lteStatus['"]\)/);
+  for (const id of ['lteSimStatus', 'lteMobileNumber', 'lteIpAddress',
+    'lteCarrier', 'lteAccess', 'lteBand', 'lteSignal']) {
+    assert.ok(template.includes(`id="${id}"`), `Keep ${id} in the LTE Status view`);
+  }
 
   loginFeedback();
   console.log('Login responsiveness and LTE polling checks passed');

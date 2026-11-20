@@ -164,6 +164,9 @@ class NetworkTests(unittest.TestCase):
         routes_patch = patch.object(lte, "verify_routes")
         self.verify_routes = routes_patch.start()
         self.addCleanup(routes_patch.stop)
+        sleep_patch = patch.object(lte.time, "sleep")
+        sleep_patch.start()
+        self.addCleanup(sleep_patch.stop)
 
     def respond(self, *args, **kwargs):
         if args == ("-g", "UUID", "connection", "show"):
@@ -269,7 +272,7 @@ class NetworkTests(unittest.TestCase):
         modem.assert_not_called()
         self.assertEqual(self.data["lte"]["ipv4.route-metric"], "100")
         self.nm.assert_any_call("device", "reapply", "eth2")
-        self.verify_routes.assert_called_once_with("eth2", 100)
+        self.verify_routes.assert_called_once_with("eth2", 100, required=True)
 
     def test_inactive_lte_metric_saved_without_activation(self):
         self.data["lte"]["GENERAL.DEVICES"] = "--"
@@ -297,6 +300,74 @@ class NetworkTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "route override"):
             lte.configure_existing_lte_metric("eth0")
         self.assertEqual(self.data["lte"]["ipv4.route-metric"], "100")
+
+    def test_stale_live_metric_reactivates_lte_once(self):
+        stale = lte.RouteVerificationError("metric remains 200")
+        self.verify_routes.side_effect = [stale] * 5 + [None]
+        self.assertTrue(lte.configure_existing_lte_metric("eth0"))
+        self.nm.assert_any_call("--wait", "60", "connection", "up", "uuid", "lte",
+                                "ifname", "usb0", timeout=70)
+        ups = [c for c in self.nm.call_args_list if "up" in c.args]
+        self.assertEqual(len(ups), 1)
+        self.assertFalse(any("down" in c.args or "eth0" in c.args
+                             for c in ups))
+        self.assertEqual(self.verify_routes.call_count, 6)
+
+    def test_delayed_reapply_does_not_reactivate_lte(self):
+        self.verify_routes.side_effect = [lte.RouteVerificationError("pending"), None]
+        self.assertTrue(lte.configure_existing_lte_metric("eth0"))
+        self.assertFalse(any("up" in c.args for c in self.nm.call_args_list))
+
+    def test_persistent_conflict_fails_after_one_reactivation(self):
+        self.verify_routes.side_effect = lte.RouteVerificationError("another route owner")
+        with self.assertRaisesRegex(lte.RouteVerificationError, "another route owner"):
+            lte.configure_existing_lte_metric("eth0")
+        self.assertEqual(sum("up" in c.args for c in self.nm.call_args_list), 1)
+        self.assertEqual(self.verify_routes.call_count, 10)
+        self.assertEqual(self.data["lte"]["ipv4.route-metric"], "100")
+
+    def test_reapply_failure_uses_lte_only_reactivation(self):
+        original = self.respond
+        def respond(*args, **kwargs):
+            if args[:2] == ("device", "reapply"):
+                raise RuntimeError("Cannot reapply this property")
+            return original(*args, **kwargs)
+        self.nm.side_effect = respond
+        self.assertTrue(lte.configure_existing_lte_metric("eth0"))
+        self.assertEqual(sum("up" in c.args for c in self.nm.call_args_list), 1)
+
+    def test_non_lte_profile_never_reactivated(self):
+        with self.assertRaisesRegex(RuntimeError, "other than the LTE"):
+            lte.reapply_lte_routes("eth", "eth0")
+        self.assertFalse(any("up" in c.args or "reapply" in c.args
+                             for c in self.nm.call_args_list))
+
+    def test_active_owner_change_prevents_reactivation(self):
+        self.verify_routes.side_effect = lte.RouteVerificationError("stale")
+        original = self.respond
+        owner_checks = []
+        def respond(*args, **kwargs):
+            if args == ("-g", "GENERAL.CON-UUID", "device", "show", "usb0"):
+                owner_checks.append(True)
+                return "lte" if len(owner_checks) == 1 else "different-connection"
+            return original(*args, **kwargs)
+        self.nm.side_effect = respond
+        with self.assertRaisesRegex(RuntimeError, "active profile changed"):
+            lte.reapply_lte_routes("lte", "usb0")
+        self.assertFalse(any("up" in c.args for c in self.nm.call_args_list))
+
+    def test_changed_binding_prevents_reactivation(self):
+        self.data["lte"]["connection.interface-name"] = "eth0"
+        self.verify_routes.side_effect = lte.RouteVerificationError("stale")
+        with self.assertRaisesRegex(RuntimeError, "binding changed"):
+            lte.reapply_lte_routes("lte", "usb0")
+        self.assertFalse(any("up" in c.args for c in self.nm.call_args_list))
+
+    def test_route_query_failure_does_not_reactivate_lte(self):
+        self.verify_routes.side_effect = lte.subprocess.CalledProcessError(1, ["ip"])
+        with self.assertRaises(lte.subprocess.CalledProcessError):
+            lte.configure_existing_lte_metric("eth0")
+        self.assertFalse(any("up" in c.args for c in self.nm.call_args_list))
 
     def test_missing_gateway_is_failure(self):
         original = self.respond
@@ -457,6 +528,20 @@ class RouteTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "No IPv4 default route"):
                 lte.verify_routes("usb0", 100, required=True)
             lte.verify_routes("eth0", 200)
+
+    def test_diagnostics_include_observed_metric_protocol_and_table(self):
+        with patch.object(lte.subprocess, "run") as run:
+            run.return_value.stdout = '[{"metric":200,"protocol":"dhcp","table":100}]'
+            with self.assertRaisesRegex(
+                    lte.RouteVerificationError, "metric=200 protocol=dhcp table=100"):
+                lte.verify_routes("eth2", 100, required=True)
+
+    def test_route_polling_is_bounded(self):
+        with patch.object(lte, "verify_routes") as verify, patch.object(lte.time, "sleep"):
+            verify.side_effect = lte.RouteVerificationError("still stale")
+            with self.assertRaisesRegex(lte.RouteVerificationError, "still stale"):
+                lte.wait_for_routes("eth2", 100)
+            self.assertEqual(verify.call_count, 5)
 
 
 if __name__ == "__main__":

@@ -152,13 +152,11 @@ async function loadLteStatus() {
         data.sim_status === 'Inserted' && data.available !== false
           ? (data.mobile_number || 'Not available') : '--';
       document.getElementById('lteIpAddress').value = data.ip_address || '--';
-      document.getElementById('lteStatus').value = data.status || '--';
       document.getElementById('lteCarrier').value = data.carrier || '--';
       document.getElementById('lteAccess').value = data.access || '--';
       document.getElementById('lteBand').value = data.band || '--';
       document.getElementById('lteSignal').value = data.signal || '--';
     } catch (error) {
-      document.getElementById('lteStatus').value = 'Unavailable';
       document.getElementById('lteMobileNumber').value = '--';
       updateDiagnosticLtePresence(false);
       const rebootButton = document.getElementById('lteRebootBtn');

@@ -39,6 +39,8 @@ After installation:
 Existing LTE profile priority is repaired before modem initialization. EC200
 uses QNETDEVCTL; detected EC25 modules use their ECM service without that command.
 --routes-only repairs existing profiles without accessing the AT port.
+If live LTE routes remain stale after reapply, the LTE profile is reactivated
+once. This can briefly interrupt LTE sessions; Ethernet is not restarted.
 
 LTE setup runs once per boot, then exits (inactive/dead on success).
 Use systemctl restart lte-ecm.service to rerun setup; the separate watchdog

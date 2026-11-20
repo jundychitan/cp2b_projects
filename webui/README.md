@@ -158,7 +158,9 @@ seconds. It does not use the browser's timezone or set the device clock.
   disappears or presence cannot be checked, both modem tabs hide and an active
   LTE/SMS view returns to RTU. Hidden LTE Status does not send status AT polling.
 - **SIM/IP** — Retains CP2B's SIM status and assigned modem IP display.
-- **Status** — Retains `AT+QPING` internet testing against the first watchdog target.
+- The connection **Status** (Connected/Disconnected) indicator is not displayed.
+  SIM status, mobile number, IP address, carrier, access, band, and signal remain.
+  The backend status API and its existing connectivity query are unchanged.
 - **Availability** — Missing `/dev/ttyUSB2` returns Not installed without AT queries.
   A failed first status query stops the sequence and reports Unavailable.
 - **Refresh** — Available to every signed-in user; shares any in-flight status

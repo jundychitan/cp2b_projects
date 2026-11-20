@@ -314,6 +314,10 @@ def profiles():
     return nm("-g", "UUID", "connection", "show").splitlines()
 
 
+class RouteVerificationError(RuntimeError):
+    """The route query succeeded, but the expected route state is not present."""
+
+
 def verify_routes(interface, metric, required=False):
     result = subprocess.run(
         ["ip", "-j", "-4", "route", "show", "table", "all", "default", "dev", interface],
@@ -321,12 +325,60 @@ def verify_routes(interface, metric, required=False):
     )
     routes = json.loads(result.stdout)
     if required and not routes:
-        raise RuntimeError("No IPv4 default route on " + interface)
+        raise RouteVerificationError("No IPv4 default route on " + interface)
     if any(route.get("metric", 0) != metric for route in routes):
-        raise RuntimeError(
-            f"{interface} still has a default route with a metric other than {metric}; "
-            "check explicit ipv4.routes metrics or another network manager"
+        observed = "; ".join(
+            f"metric={route.get('metric', 0)} "
+            f"protocol={route.get('protocol', 'unknown')} table={route.get('table', 'main')}"
+            for route in routes
         )
+        raise RouteVerificationError(
+            f"{interface} still has a default route with a metric other than {metric}; "
+            f"observed [{observed}]; check explicit ipv4.routes metrics or another network manager"
+        )
+
+
+def wait_for_routes(interface, metric, required=True, attempts=5):
+    # NetworkManager can acknowledge reapply before the kernel routes converge.
+    for attempt in range(attempts):
+        try:
+            verify_routes(interface, metric, required=required)
+            return
+        except RouteVerificationError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(1)
+
+
+def reapply_lte_routes(uuid, interface, activation_timeout=60):
+    """Reapply without interruption first; reactivate only this LTE profile if needed."""
+    if (get_profile(uuid, "connection.id") != "LTE"
+            or get_profile(uuid, "connection.type") != "802-3-ethernet"):
+        raise RuntimeError("Refusing to reactivate a connection other than the LTE ECM profile")
+    if nm("-g", "GENERAL.CON-UUID", "device", "show", interface) != uuid:
+        raise RuntimeError("LTE active device changed before route repair; rerun setup")
+    try:
+        nm("device", "reapply", interface)
+    except RuntimeError as error:
+        LOG.warning("LTE reapply failed on %s: %s", interface, error)
+    else:
+        try:
+            wait_for_routes(interface, 100)
+            return
+        except RouteVerificationError as error:
+            LOG.warning("LTE reapply did not update the live route: %s", error)
+
+    # Recheck immediately before any potentially disruptive operation.
+    if nm("-g", "GENERAL.CON-UUID", "device", "show", interface) != uuid:
+        raise RuntimeError("LTE active profile changed; refusing to reactivate another profile")
+    bound = get_profile(uuid, "connection.interface-name")
+    if bound not in ("", "--", interface):
+        raise RuntimeError("LTE interface binding changed; refusing to reactivate it")
+    LOG.warning("Reactivating LTE only on %s once; LTE sessions may briefly disconnect", interface)
+    nm("--wait", str(activation_timeout), "connection", "up", "uuid", uuid,
+       "ifname", interface, timeout=activation_timeout + 10)
+    # Do not delete routes or restart NetworkManager/Ethernet if another owner persists.
+    wait_for_routes(interface, 100)
 
 
 def configure_ethernet(interface):
@@ -390,8 +442,7 @@ def configure_existing_lte_metric(primary_interface):
     if active_device not in ("", "--"):
         if nm("-g", "GENERAL.CON-UUID", "device", "show", active_device) != uuid:
             raise RuntimeError("LTE active device changed while applying metric; rerun setup")
-        nm("device", "reapply", active_device)
-        verify_routes(active_device, 100)
+        reapply_lte_routes(uuid, active_device)
         LOG.info("Applied LTE IPv4 metric 100 to active device %s", active_device)
     return True
 
@@ -423,14 +474,14 @@ def configure_lte(interface, activation_timeout):
         "ipv4.ignore-auto-routes": "no",
     })
     if nm("-g", "GENERAL.CON-UUID", "device", "show", interface) == uuid:
-        nm("device", "reapply", interface)
+        reapply_lte_routes(uuid, interface, activation_timeout)
     else:
         nm("--wait", str(activation_timeout), "connection", "up", "uuid", uuid,
            "ifname", interface, timeout=activation_timeout + 10)
+        wait_for_routes(interface, 100)
     routes = nm("-g", "IP4.GATEWAY", "device", "show", interface)
     if not routes or routes == "--":
         raise RuntimeError("LTE has no IPv4 gateway; check SIM, APN and data-call command")
-    verify_routes(interface, 100, required=True)
     LOG.info("LTE connection on %s: DHCP, autoconnect, IPv4 metric 100", interface)
 
 
