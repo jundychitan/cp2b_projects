@@ -31,8 +31,8 @@ After installation:
 
 The service runs once per boot, then exits (inactive/dead on success).
 Use systemctl restart lte-ecm.service to rerun it. There is no monitoring loop.
-Route metrics prefer Ethernet while its route exists; they do not detect an
-upstream Internet failure. IPv6 preferences are not modified.
+IPv4 metrics: Ethernet 200, LTE 100. They prefer LTE while its route exists,
+but do not detect an upstream Internet failure. IPv6 preferences are not modified.
 USAGE
 }
 

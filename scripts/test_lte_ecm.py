@@ -135,7 +135,7 @@ class NetworkTests(unittest.TestCase):
         self.data = {
             "eth": {"connection.id": "Wired connection 1",
                     "connection.type": "802-3-ethernet",
-                    "connection.interface-name": "eth0", "ipv4.route-metric": "100"},
+                    "connection.interface-name": "eth0", "ipv4.route-metric": "200"},
             "lte": {"connection.id": "LTE", "connection.type": "802-3-ethernet",
                     "connection.interface-name": "usb0"},
         }
@@ -174,20 +174,21 @@ class NetworkTests(unittest.TestCase):
         raise AssertionError("Unexpected nmcli arguments: " + repr(args))
 
     def test_correct_properties_are_not_written(self):
-        self.assertFalse(lte.set_properties("eth", {"ipv4.route-metric": "100"}))
+        self.assertFalse(lte.set_properties("eth", {"ipv4.route-metric": "200"}))
         self.assertFalse(any(c.args[:2] == ("connection", "modify")
                              for c in self.nm.call_args_list))
 
     def test_only_different_properties_are_written(self):
         self.assertTrue(lte.set_properties("eth", {
-            "ipv4.route-metric": "100", "connection.autoconnect": "yes"}))
+            "ipv4.route-metric": "200", "connection.autoconnect": "yes"}))
         self.nm.assert_any_call("connection", "modify", "uuid", "eth",
                                 "connection.autoconnect", "yes")
 
     def test_ethernet_reapply_without_down(self):
         self.data["eth"]["ipv4.route-metric"] = "999"
         lte.configure_ethernet("eth0")
-        self.assertEqual(self.data["eth"]["ipv4.route-metric"], "100")
+        self.assertEqual(self.data["eth"]["ipv4.route-metric"], "200")
+        self.verify_routes.assert_called_once_with("eth0", 200)
         self.nm.assert_any_call("device", "reapply", "eth0")
         self.assertFalse(any("down" in c.args for c in self.nm.call_args_list))
 
@@ -209,7 +210,8 @@ class NetworkTests(unittest.TestCase):
 
     def test_existing_lte_is_reused_and_idempotent(self):
         lte.configure_lte("usb0", 60)
-        self.assertEqual(self.data["lte"]["ipv4.route-metric"], "200")
+        self.assertEqual(self.data["lte"]["ipv4.route-metric"], "100")
+        self.verify_routes.assert_called_once_with("usb0", 100, required=True)
         self.nm.reset_mock()
         lte.configure_lte("usb0", 60)
         self.assertFalse(any(c.args[:2] in (("connection", "add"), ("connection", "modify"))
@@ -218,7 +220,8 @@ class NetworkTests(unittest.TestCase):
     def test_missing_lte_is_created(self):
         del self.data["lte"]
         lte.configure_lte("usb0", 60)
-        self.assertEqual(self.data["new"]["ipv4.route-metric"], "200")
+        self.assertEqual(self.data["new"]["ipv4.route-metric"], "100")
+        self.verify_routes.assert_called_once_with("usb0", 100, required=True)
         self.nm.assert_any_call("--wait", "60", "connection", "up", "uuid", "new",
                                 "ifname", "usb0", timeout=70)
 
@@ -290,21 +293,21 @@ class DataCallTests(unittest.TestCase):
 class RouteTests(unittest.TestCase):
     def test_live_metric_verified(self):
         with patch.object(lte.subprocess, "run") as run:
-            run.return_value.stdout = '[{"dst":"default","metric":200}]'
-            lte.verify_routes("usb0", 200, required=True)
+            run.return_value.stdout = '[{"dst":"default","metric":100}]'
+            lte.verify_routes("usb0", 100, required=True)
 
     def test_explicit_wrong_metric_detected(self):
         with patch.object(lte.subprocess, "run") as run:
             run.return_value.stdout = '[{"dst":"default","metric":999}]'
             with self.assertRaisesRegex(RuntimeError, "explicit ipv4.routes"):
-                lte.verify_routes("usb0", 200, required=True)
+                lte.verify_routes("usb0", 100, required=True)
 
     def test_lte_default_route_required(self):
         with patch.object(lte.subprocess, "run") as run:
             run.return_value.stdout = "[]"
             with self.assertRaisesRegex(RuntimeError, "No IPv4 default route"):
-                lte.verify_routes("usb0", 200, required=True)
-            lte.verify_routes("eth0", 100)
+                lte.verify_routes("usb0", 100, required=True)
+            lte.verify_routes("eth0", 200)
 
 
 if __name__ == "__main__":

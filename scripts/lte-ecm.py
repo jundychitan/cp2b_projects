@@ -318,12 +318,12 @@ def configure_ethernet(interface):
                                + "; bind its connection.interface-name explicitly")
     changed = False
     for uuid in selected:
-        changed |= set_properties(uuid, {"ipv4.route-metric": "100"})
+        changed |= set_properties(uuid, {"ipv4.route-metric": "200"})
     if active and active != "--":
         # Reapply even if persistent settings already match: the live route may not.
         nm("device", "reapply", interface)
-        verify_routes(interface, 100)
-    LOG.info("Ethernet %s: IPv4 metric 100%s", interface, " (updated)" if changed else "")
+        verify_routes(interface, 200)
+    LOG.info("Ethernet %s: IPv4 metric 200%s", interface, " (updated)" if changed else "")
 
 
 def configure_lte(interface, activation_timeout):
@@ -343,7 +343,7 @@ def configure_lte(interface, activation_timeout):
     else:
         nm("connection", "add", "type", "ethernet", "ifname", interface,
            "con-name", "LTE", "connection.autoconnect", "yes",
-           "ipv4.method", "auto", "ipv4.route-metric", "200")
+           "ipv4.method", "auto", "ipv4.route-metric", "100")
         uuid = nm("-g", "connection.uuid", "connection", "show", "id", "LTE")
     # No MAC binding: some modem firmware changes its MAC after power cycling.
     set_properties(uuid, {
@@ -353,7 +353,7 @@ def configure_lte(interface, activation_timeout):
         "connection.autoconnect-retries": "0",
         "ipv4.method": "auto",
         "ipv4.may-fail": "no",
-        "ipv4.route-metric": "200",
+        "ipv4.route-metric": "100",
         "ipv4.never-default": "no",
         "ipv4.ignore-auto-routes": "no",
     })
@@ -365,8 +365,8 @@ def configure_lte(interface, activation_timeout):
     routes = nm("-g", "IP4.GATEWAY", "device", "show", interface)
     if not routes or routes == "--":
         raise RuntimeError("LTE has no IPv4 gateway; check SIM, APN and data-call command")
-    verify_routes(interface, 200, required=True)
-    LOG.info("LTE connection on %s: DHCP, autoconnect, IPv4 metric 200", interface)
+    verify_routes(interface, 100, required=True)
+    LOG.info("LTE connection on %s: DHCP, autoconnect, IPv4 metric 100", interface)
 
 
 def run(config):
