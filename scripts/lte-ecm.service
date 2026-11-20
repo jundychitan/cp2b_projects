@@ -1,5 +1,5 @@
 [Unit]
-Description=Configure Quectel EC200 ECM and NetworkManager route metrics
+Description=Configure Quectel EC200/EC25 ECM and NetworkManager route metrics
 Requires=NetworkManager.service
 After=NetworkManager.service
 

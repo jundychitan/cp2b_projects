@@ -1,7 +1,7 @@
 [Unit]
 Description=Reboot system if internet connectivity is lost
-After=network-online.target
-Wants=network-online.target
+After=network-online.target lte-ecm.service
+Wants=network-online.target lte-ecm.service
 
 [Service]
 Type=simple

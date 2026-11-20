@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot Quectel EC200 ECM setup for Linux/NetworkManager."""
+"""One-shot Quectel EC200/EC25 ECM setup for Linux/NetworkManager."""
 
 import argparse
 import contextlib
@@ -176,6 +176,40 @@ def activate_data_call(port, command, timeout):
              timeout, f"modem data call for context {cid}")
 
 
+def model_from_response(response):
+    # Accept model-only replies and common prefixes, not firmware-version substrings.
+    pattern = (
+        r'(?:(?:\+?(?:CGMM|GMM)|MODEL)\s*:\s*)?'
+        r'(?:QUECTEL\s+)?"?(EC200[A-Z0-9_-]*|EC25[A-Z0-9_-]*)"?'
+    )
+    for line in response.splitlines():
+        match = re.fullmatch(pattern, line.strip(), re.I)
+        if match:
+            return match.group(1).upper()
+    return None
+
+
+def identify_modem(port, path):
+    # USB VID has already established Quectel ownership in modem_usb().
+    # Some firmware returns only the model, or incomplete ATI output at boot.
+    for attempt in range(2):
+        for command in ("AT+CGMM", "AT+GMM", "ATI"):
+            try:
+                response = port.command(command, timeout=3)
+            except RuntimeError:
+                continue  # Unsupported query or incomplete response; try the fallback.
+            model = model_from_response(response)
+            if model:
+                LOG.info("Detected Quectel model %s on %s using %s", model, path, command)
+                return model
+        if attempt == 0:
+            time.sleep(1)
+    raise RuntimeError(
+        f"No supported EC200/EC25 model identified on {path} using CGMM/GMM/ATI; "
+        "check the AT port and firmware model response. No modem settings were changed"
+    )
+
+
 def prepare_modem(config):
     path = config["port"]
     wait_for(lambda: Path(path).is_char_device(), config["device_timeout"], path)
@@ -183,9 +217,7 @@ def prepare_modem(config):
     old_devnum = (parent / "devnum").read_text().strip()
     with at_port(path) as port:
         wait_for(lambda: modem_ready(port), 30, "modem AT readiness")
-        identity = port.command("ATI")
-        if "QUECTEL" not in identity.upper() or "EC200" not in identity.upper():
-            raise RuntimeError("Expected Quectel EC200 identity on " + path)
+        model = identify_modem(port, path)
         mode = usbnet_mode(port.command('AT+QCFG="usbnet"'))
         changed = mode != 1
         if changed:
@@ -223,7 +255,10 @@ def prepare_modem(config):
                 normalized = re.sub(r"\s+", "", contexts)
                 if desired.replace(" ", "") not in normalized:
                     port.command(f'AT+CGDCONT=1,"IP","{apn}"')
-            activate_data_call(port, dial_command, config["device_timeout"])
+            if model.startswith("EC25") and re.match(r"AT\+QNETDEVCTL", dial_command, re.I):
+                LOG.info("EC25 ECM: skipping EC200-only QNETDEVCTL; using modem's ECM data service")
+            else:
+                activate_data_call(port, dial_command, config["device_timeout"])
     return parent
 
 
@@ -326,14 +361,44 @@ def configure_ethernet(interface):
     LOG.info("Ethernet %s: IPv4 metric 200%s", interface, " (updated)" if changed else "")
 
 
-def configure_lte(interface, activation_timeout):
+def existing_lte_profile():
     matches = [uuid for uuid in profiles() if get_profile(uuid, "connection.id") == "LTE"]
     if len(matches) > 1:
         raise RuntimeError("Multiple connections named LTE; remove ambiguity first")
-    if matches:
-        uuid = matches[0]
-        if get_profile(uuid, "connection.type") != "802-3-ethernet":
-            raise RuntimeError("Existing LTE connection is not an Ethernet/ECM profile")
+    if not matches:
+        return None
+    uuid = matches[0]
+    if get_profile(uuid, "connection.type") != "802-3-ethernet":
+        raise RuntimeError("Existing LTE connection is not an Ethernet/ECM profile")
+    return uuid
+
+
+def configure_existing_lte_metric(primary_interface):
+    """Repair saved/live LTE priority without depending on AT commands or DHCP."""
+    uuid = existing_lte_profile()
+    if uuid is None:
+        LOG.info("No existing LTE profile; it will be created after ECM discovery")
+        return False
+    active_device = get_profile(uuid, "GENERAL.DEVICES")
+    bound = get_profile(uuid, "connection.interface-name")
+    if primary_interface in (active_device, bound):
+        raise RuntimeError("LTE profile points to primary Ethernet; refusing to modify it")
+    if active_device not in ("", "--") and not re.fullmatch(r"[A-Za-z0-9_.-]+", active_device):
+        raise RuntimeError("Cannot choose a single active device for the LTE profile")
+    set_properties(uuid, {"ipv4.route-metric": "100"})
+    LOG.info("Saved LTE profile IPv4 metric: %s", get_profile(uuid, "ipv4.route-metric"))
+    if active_device not in ("", "--"):
+        if nm("-g", "GENERAL.CON-UUID", "device", "show", active_device) != uuid:
+            raise RuntimeError("LTE active device changed while applying metric; rerun setup")
+        nm("device", "reapply", active_device)
+        verify_routes(active_device, 100)
+        LOG.info("Applied LTE IPv4 metric 100 to active device %s", active_device)
+    return True
+
+
+def configure_lte(interface, activation_timeout):
+    uuid = existing_lte_profile()
+    if uuid is not None:
         devices = get_profile(uuid, "GENERAL.DEVICES")
         if devices not in ("", "--", interface):
             raise RuntimeError("Existing LTE profile is active on another interface: " + devices)
@@ -369,7 +434,7 @@ def configure_lte(interface, activation_timeout):
     LOG.info("LTE connection on %s: DHCP, autoconnect, IPv4 metric 100", interface)
 
 
-def run(config):
+def run(config, routes_only=False):
     interface = config["ethernet"]
     if not interface:
         candidates = [name for name in ("eth0", "end0")
@@ -377,11 +442,33 @@ def run(config):
         if len(candidates) != 1:
             raise RuntimeError("Specify --ethernet at install time (cannot choose eth0/end0)")
         interface = candidates[0]
-    configure_ethernet(interface)
-    parent = prepare_modem(config)
-    interface = wait_for(lambda: ecm_interface(parent), config["device_timeout"],
-                         "modem CDC ECM interface (cdc_ether driver)")
-    configure_lte(interface, config["activation_timeout"])
+    errors = []
+    failures = (OSError, RuntimeError, ValueError, subprocess.SubprocessError)
+    # Neither route stage may depend on successful serial initialization.
+    try:
+        found = configure_existing_lte_metric(interface)
+        if routes_only and not found:
+            raise RuntimeError("No existing LTE profile to repair; run full setup first")
+    except failures as error:
+        LOG.error("LTE route metric stage: %s", error)
+        errors.append(f"LTE route metric: {error}")
+    try:
+        configure_ethernet(interface)
+    except failures as error:
+        LOG.error("Ethernet route metric stage: %s", error)
+        errors.append(f"Ethernet route metric: {error}")
+    if not routes_only:
+        try:
+            parent = prepare_modem(config)
+            lte_interface = wait_for(lambda: ecm_interface(parent), config["device_timeout"],
+                                     "modem CDC ECM interface (cdc_ether driver)")
+            configure_lte(lte_interface, config["activation_timeout"])
+        except failures as error:
+            LOG.error("Modem/ECM stage: %s", error)
+            errors.append(f"modem/ECM: {error}")
+    if errors:
+        raise RuntimeError("Setup incomplete: " + "; ".join(errors))
+    LOG.info("IPv4 route priority configured: LTE 100, Ethernet 200")
 
 
 def main():
@@ -389,6 +476,8 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="/etc/lte-ecm.json")
+    parser.add_argument("--routes-only", action="store_true",
+                        help="Repair existing LTE/Ethernet metrics without modem commands")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     if os.geteuid() != 0:
@@ -403,7 +492,9 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("Another lte-ecm instance is already running")
-        run(config)
+        # The watchdog also detects setup attempts that finish between its polls.
+        Path("/run/lte-ecm.generation").write_text(f"{time.monotonic_ns()}\n")
+        run(config, routes_only=args.routes_only)
 
 
 if __name__ == "__main__":
@@ -411,6 +502,6 @@ if __name__ == "__main__":
         main()
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         LOG.error("%s", error)
-        LOG.error("If the AT port is busy, check ModemManager or other serial clients. "
-                  "See journalctl -u lte-ecm.service -b")
+        LOG.error("Successful route changes are retained. "
+                  "See journalctl -u lte-ecm.service -b for the failing stage")
         sys.exit(1)

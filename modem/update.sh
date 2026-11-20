@@ -59,6 +59,17 @@ install_file() {
 [ -f "$SRC_SCRIPT" ]                    || die "Missing source script: $SRC_SCRIPT"
 [ -f "$SRC_SERVICE" ]                   || die "Missing source service unit: $SRC_SERVICE"
 command -v systemctl >/dev/null 2>&1    || die "systemctl not found; this system is not systemd-based"
+for tool in flock timeout ping curl reboot sync; do
+    command -v "$tool" >/dev/null || die "Missing watchdog prerequisite: $tool"
+done
+systemctl cat lte-ecm.service >/dev/null 2>&1 ||
+    die "Install ../scripts/install-lte-ecm.sh first; the watchdog now coordinates with LTE setup"
+
+# Stop a legacy process before replacing its script or starting LTE setup.
+log "Stopping existing watchdog before deployment..."
+systemctl stop "$SERVICE_NAME" 2>/dev/null ||
+    [[ "$(systemctl show "$SERVICE_NAME" --property=LoadState --value)" == not-found ]] ||
+    die "Cannot safely stop the existing watchdog"
 
 # --- Deploy ----------------------------------------------------------------
 log "Ensuring install directory exists -> $INSTALL_DIR"

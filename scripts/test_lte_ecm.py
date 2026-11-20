@@ -55,10 +55,13 @@ class ModemTests(unittest.TestCase):
         self.modem_usb.return_value = self.parent
         self.port = self.at_port.return_value.__enter__.return_value
         self.config = dict(lte.DEFAULTS)
+        sleep_patch = patch.object(lte.time, "sleep")
+        sleep_patch.start()
+        self.addCleanup(sleep_patch.stop)
 
     def response(self, mode=1, identity="Quectel EC200U", contexts="", connected=1):
         def command(text, **kwargs):
-            if text == "ATI":
+            if text in ("ATI", "AT+CGMM", "AT+GMM"):
                 return identity + "\r\nOK\r\n"
             if text == 'AT+QCFG="usbnet"':
                 return f'+QCFG: "usbnet",{mode}\r\nOK\r\n'
@@ -73,13 +76,16 @@ class ModemTests(unittest.TestCase):
         self.response()
         self.assertEqual(lte.prepare_modem(self.config), self.parent)
         self.assertEqual(self.port.command.call_args_list,
-                         [call("ATI"), call('AT+QCFG="usbnet"'), call("AT+QNETDEVCTL?")])
+                         [call("AT+CGMM", timeout=3), call('AT+QCFG="usbnet"'),
+                          call("AT+QNETDEVCTL?")])
 
     def test_wrong_identity_is_not_modified(self):
         self.response(identity="Unrelated modem")
-        with self.assertRaisesRegex(RuntimeError, "Expected Quectel"):
+        with self.assertRaisesRegex(RuntimeError, "No supported EC200/EC25"):
             lte.prepare_modem(self.config)
-        self.assertEqual(self.port.command.call_args_list, [call("ATI")])
+        self.assertEqual(self.port.command.call_count, 6)
+        self.assertTrue(all(c.args[0] in ("AT+CGMM", "AT+GMM", "ATI")
+                            for c in self.port.command.call_args_list))
 
     def test_mode_change_is_verified_after_reset(self):
         modes = iter((0, 1))
@@ -97,6 +103,18 @@ class ModemTests(unittest.TestCase):
         self.response(mode=0)
         with self.assertRaisesRegex(RuntimeError, "did not retain"):
             lte.prepare_modem(self.config)
+
+    def test_model_only_ec200_reply_accepted(self):
+        self.response(identity="EC200A")
+        lte.prepare_modem(self.config)
+        self.port.command.assert_any_call('AT+QCFG="usbnet"')
+
+    def test_ec25_skips_ec200_data_call_commands(self):
+        self.response(identity="Quectel EC25-E")
+        lte.prepare_modem(self.config)
+        self.port.command.assert_any_call('AT+QCFG="usbnet"')
+        self.assertFalse(any("QNETDEVCTL" in c.args[0]
+                             for c in self.port.command.call_args_list))
 
     def test_matching_apn_is_not_rewritten(self):
         self.config["apn"] = "internet"
@@ -137,7 +155,7 @@ class NetworkTests(unittest.TestCase):
                     "connection.type": "802-3-ethernet",
                     "connection.interface-name": "eth0", "ipv4.route-metric": "200"},
             "lte": {"connection.id": "LTE", "connection.type": "802-3-ethernet",
-                    "connection.interface-name": "usb0"},
+                    "connection.interface-name": "usb0", "GENERAL.DEVICES": "usb0"},
         }
         self.nm_patch = patch.object(lte, "nm")
         self.nm = self.nm_patch.start()
@@ -241,6 +259,45 @@ class NetworkTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "another present"):
                 lte.configure_lte("usb0", 60)
 
+    def test_existing_eth2_metric_repaired_without_modem(self):
+        self.data["lte"].update({
+            "connection.interface-name": "eth2", "GENERAL.DEVICES": "eth2",
+            "ipv4.route-metric": "200",
+        })
+        with patch.object(lte, "prepare_modem") as modem:
+            self.assertTrue(lte.configure_existing_lte_metric("eth0"))
+        modem.assert_not_called()
+        self.assertEqual(self.data["lte"]["ipv4.route-metric"], "100")
+        self.nm.assert_any_call("device", "reapply", "eth2")
+        self.verify_routes.assert_called_once_with("eth2", 100)
+
+    def test_inactive_lte_metric_saved_without_activation(self):
+        self.data["lte"]["GENERAL.DEVICES"] = "--"
+        self.assertTrue(lte.configure_existing_lte_metric("eth0"))
+        self.assertEqual(self.data["lte"]["ipv4.route-metric"], "100")
+        self.verify_routes.assert_not_called()
+        self.assertFalse(any("reapply" in c.args or "up" in c.args
+                             for c in self.nm.call_args_list))
+
+    def test_missing_lte_metric_profile_not_created_by_guessing(self):
+        del self.data["lte"]
+        self.assertFalse(lte.configure_existing_lte_metric("eth0"))
+        self.assertFalse(any(c.args[:2] == ("connection", "add")
+                             for c in self.nm.call_args_list))
+
+    def test_metric_repair_refuses_primary_ethernet_profile(self):
+        self.data["lte"]["GENERAL.DEVICES"] = "eth0"
+        with self.assertRaisesRegex(RuntimeError, "primary Ethernet"):
+            lte.configure_existing_lte_metric("eth0")
+        self.assertFalse(any(c.args[:2] == ("connection", "modify")
+                             for c in self.nm.call_args_list))
+
+    def test_live_verification_failure_keeps_persistent_metric(self):
+        self.verify_routes.side_effect = RuntimeError("route override")
+        with self.assertRaisesRegex(RuntimeError, "route override"):
+            lte.configure_existing_lte_metric("eth0")
+        self.assertEqual(self.data["lte"]["ipv4.route-metric"], "100")
+
     def test_missing_gateway_is_failure(self):
         original = self.respond
         self.nm.side_effect = lambda *args, **kwargs: (
@@ -254,6 +311,98 @@ class NetworkTests(unittest.TestCase):
         self.data["lte"]["GENERAL.DEVICES"] = "eth0"
         with self.assertRaisesRegex(RuntimeError, "active on another"):
             lte.configure_lte("usb0", 60)
+
+
+class IdentityTests(unittest.TestCase):
+    def test_supported_formats(self):
+        for response, expected in (
+            ("EC200A\r\nOK", "EC200A"),
+            ("Quectel\r\nEC200U\r\nRevision: something\r\nOK", "EC200U"),
+            ('+CGMM: "EC200A-CN"\r\nOK', "EC200A-CN"),
+            ("Model: EC25-E\r\nOK", "EC25-E"),
+            ("quectel ec200u\r\nOK", "EC200U"),
+        ):
+            with self.subTest(response=response):
+                self.assertEqual(lte.model_from_response(response), expected)
+
+    def test_unrelated_or_firmware_only_text_not_accepted(self):
+        for response in ("OK", "Quectel EG25-G", "Revision: EC200A12345", "AT+CGMM"):
+            self.assertIsNone(lte.model_from_response(response))
+
+    def test_gmm_fallback_when_cgmm_unsupported(self):
+        port = MagicMock()
+        port.command.side_effect = [RuntimeError("unsupported"), "EC200A\r\nOK"]
+        self.assertEqual(lte.identify_modem(port, "/dev/ttyUSB2"), "EC200A")
+        port.command.assert_any_call("AT+GMM", timeout=3)
+
+    def test_ati_fallback(self):
+        port = MagicMock()
+        port.command.side_effect = ["OK", "OK", "Quectel EC200U\r\nOK"]
+        self.assertEqual(lte.identify_modem(port, "/dev/ttyUSB2"), "EC200U")
+
+    def test_incomplete_boot_reply_retried(self):
+        port = MagicMock()
+        port.command.side_effect = ["OK", "OK", "OK", "EC200A\r\nOK"]
+        with patch.object(lte.time, "sleep"):
+            self.assertEqual(lte.identify_modem(port, "/dev/ttyUSB2"), "EC200A")
+
+    def test_unknown_identity_fails_without_configuring_modem(self):
+        port = MagicMock()
+        port.command.return_value = "Unrelated modem\r\nOK"
+        with patch.object(lte.time, "sleep"):
+            with self.assertRaisesRegex(RuntimeError, "No modem settings were changed"):
+                lte.identify_modem(port, "/dev/ttyUSB2")
+        self.assertEqual(port.command.call_count, 6)
+
+
+class RunTests(unittest.TestCase):
+    def setUp(self):
+        self.calls = MagicMock()
+        for name in ("configure_existing_lte_metric", "configure_ethernet",
+                     "prepare_modem", "configure_lte", "wait_for"):
+            p = patch.object(lte, name)
+            mock = p.start()
+            self.addCleanup(p.stop)
+            setattr(self, name, mock)
+            self.calls.attach_mock(mock, name)
+        self.config = {**lte.DEFAULTS, "ethernet": "eth0"}
+        self.configure_existing_lte_metric.return_value = True
+        self.wait_for.return_value = "eth2"
+
+    def test_both_metrics_attempted_before_failed_identity(self):
+        self.prepare_modem.side_effect = RuntimeError("identity rejected")
+        with self.assertRaisesRegex(RuntimeError, "identity rejected"):
+            lte.run(self.config)
+        self.assertEqual(self.calls.mock_calls[:3], [
+            call.configure_existing_lte_metric("eth0"),
+            call.configure_ethernet("eth0"), call.prepare_modem(self.config),
+        ])
+        self.configure_lte.assert_not_called()
+
+    def test_ethernet_failure_does_not_prevent_modem_setup(self):
+        self.configure_ethernet.side_effect = RuntimeError("Ethernet unavailable")
+        with self.assertRaisesRegex(RuntimeError, "Ethernet unavailable"):
+            lte.run(self.config)
+        self.prepare_modem.assert_called_once_with(self.config)
+        self.configure_lte.assert_called_once_with("eth2", 60)
+
+    def test_route_only_never_opens_modem(self):
+        lte.run(self.config, routes_only=True)
+        self.configure_existing_lte_metric.assert_called_once_with("eth0")
+        self.configure_ethernet.assert_called_once_with("eth0")
+        self.prepare_modem.assert_not_called()
+        self.configure_lte.assert_not_called()
+
+    def test_route_only_reports_missing_profile(self):
+        self.configure_existing_lte_metric.return_value = False
+        with self.assertRaisesRegex(RuntimeError, "No existing LTE profile"):
+            lte.run(self.config, routes_only=True)
+        self.configure_ethernet.assert_called_once_with("eth0")
+        self.prepare_modem.assert_not_called()
+
+    def test_full_success(self):
+        lte.run(self.config)
+        self.configure_lte.assert_called_once_with("eth2", 60)
 
 
 class DataCallTests(unittest.TestCase):
