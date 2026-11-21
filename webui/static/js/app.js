@@ -39,7 +39,12 @@ function showAlert(msg, type) {
 async function apiGet(url) {
   const res = await fetch(url);
   if (res.status === 401) { window.location.href = '/login'; return null; }
-  return res.json();
+  const data = await res.json();
+  if (res.ok === false || data.error) {
+    showAlert(data.error || 'Unable to load settings', 'danger');
+    return null;
+  }
+  return data;
 }
 
 async function apiPost(url, body) {
@@ -72,6 +77,178 @@ async function apiDelete(url) {
 // Role-based UI
 // ============================================================================
 
+// Each section compares its actual save payload with its last confirmed value.
+// Unregistered sections are ignored so the handlers also work without this UI.
+const saveChanges = {
+  sections: new Map(),
+  register(name, read, buttons, editable = () => CAN_MANAGE) {
+    this.sections.set(name, { read, buttons, editable, baseline: null, busy: false, loading: true, version: 0 });
+    this.refresh(name);
+  },
+  current(name, version) {
+    const state = this.sections.get(name);
+    return !state || state.version === version;
+  },
+  dirty(name) {
+    const state = this.sections.get(name);
+    return !!state && state.baseline !== null
+      && JSON.stringify(state.read()) !== state.baseline;
+  },
+  keepEdits(name) {
+    const state = this.sections.get(name);
+    return !!state && (state.busy || this.dirty(name));
+  },
+  loading(name) {
+    const state = this.sections.get(name);
+    if (!state) return;
+    state.loading = true;
+    state.baseline = null;
+    state.version++;
+    this.refresh(name);
+    return state.version;
+  },
+  saved(name, value) {
+    const state = this.sections.get(name);
+    if (!state) return;
+    state.baseline = JSON.stringify(value === undefined ? state.read() : value);
+    state.loading = false;
+    state.version++;
+    this.refresh(name);
+  },
+  refresh(name) {
+    const state = this.sections.get(name);
+    if (!state) return;
+    this.refreshFields(name);
+    const uploading = name === 'meters' && typeof meterUploadBusy !== 'undefined' && meterUploadBusy;
+    const enabled = state.editable() && !state.loading && !state.busy && !uploading && this.dirty(name);
+    for (const { id, valid = () => true } of state.buttons) {
+      const button = document.getElementById(id);
+      if (button) button.disabled = !enabled || !valid();
+    }
+    if (name === 'config') {
+      for (const id of ['cfgFileSelect', 'configDeleteBtn']) {
+        const control = document.getElementById(id);
+        if (control) control.disabled = state.busy;
+      }
+      const editor = document.getElementById('cfgEditor');
+      if (editor) editor.readOnly = state.loading || !state.editable();
+    }
+    if (name === 'meters') {
+      for (const id of ['meterBatchUploadFile', 'meterBatchUploadBtn', 'meterBatchAddBtn']) {
+        const control = document.getElementById(id);
+        if (control) control.disabled = !state.editable() || state.busy || state.loading || !!uploading;
+      }
+    }
+  },
+  refreshFields(name) {
+    const state = this.sections.get(name);
+    const fields = {
+      network: ['rtuDhcp', 'rtuStatic', 'rtuIp', 'rtuSubnet', 'rtuGateway', 'rtuDns'],
+      server: ['rtuServerIp'], location: ['rtuLocation'],
+      autoread: ['autoReadEnable', 'autoReadInterval'],
+      password: ['oldPassword', 'newPassword', 'confirmPassword'],
+    };
+    for (const id of fields[name] || []) {
+      const field = document.getElementById(id);
+      const inactive = name === 'network' && !['rtuDhcp', 'rtuStatic'].includes(id)
+        && !document.getElementById('rtuStatic').checked;
+      if (field) field.disabled = !state.editable() || state.loading || inactive
+        || (name === 'password' && state.busy);
+    }
+  },
+  refreshAll() {
+    this.sections.forEach((state, name) => this.refresh(name));
+  },
+  begin(name) {
+    const state = this.sections.get(name);
+    if (!state) return true;
+    this.refresh(name);
+    if (!state.editable() || state.loading || state.busy || !this.dirty(name)
+        || (name === 'meters' && typeof meterUploadBusy !== 'undefined' && meterUploadBusy)) return false;
+    state.busy = true;
+    this.refresh(name);
+    return true;
+  },
+  end(name) {
+    const state = this.sections.get(name);
+    if (!state) return;
+    state.busy = false;
+    this.refresh(name);
+  },
+};
+
+function rtuNetworkValues() {
+  if (!document.getElementById('rtuStatic').checked) return { method: 'auto' };
+  return {
+    method: 'manual',
+    ip_address: document.getElementById('rtuIp').value.trim(),
+    subnet: document.getElementById('rtuSubnet').value.trim() || '24',
+    gateway: document.getElementById('rtuGateway').value.trim(),
+    dns: document.getElementById('rtuDns').value.trim(),
+  };
+}
+
+function watchdogValues() {
+  return { targets: Array.from(document.querySelectorAll('.watchdog-ip'),
+    input => input.value.trim()).filter(Boolean) };
+}
+
+function autoReadValues() {
+  return {
+    enable: document.getElementById('autoReadEnable').checked,
+    interval: document.getElementById('autoReadInterval').value.trim(),
+  };
+}
+
+function configValues() {
+  return {
+    filename: document.getElementById('cfgFileSelect').value,
+    content: document.getElementById('cfgEditor').value,
+  };
+}
+
+function initializeSaveChanges() {
+  const single = (name, read, id) => saveChanges.register(name, read, [{ id }]);
+  single('network', rtuNetworkValues, 'rtuNetworkSaveBtn');
+  single('server', () => ({ server_ip: document.getElementById('rtuServerIp').value.trim() }), 'rtuServerSaveBtn');
+  single('location', () => ({ location: document.getElementById('rtuLocation').value.trim() }), 'rtuLocationSaveBtn');
+  single('watchdog', watchdogValues, 'watchdogSaveBtn');
+  single('autoread', autoReadValues, 'autoReadSaveBtn');
+  single('meters', () => ({ meters: collectMeters() }), 'meterBatchSaveBtn');
+  saveChanges.register('config', configValues, [
+    { id: 'configSaveBtn', valid: () => !!document.getElementById('cfgFileSelect').value },
+    { id: 'configSaveAsBtn' },
+  ]);
+  saveChanges.saved('config', { filename: '', content: '' });
+  // Password contents are never retained in a snapshot.
+  saveChanges.register('password', () => ({
+    changed: !!document.getElementById('newPassword').value,
+  }), [{
+    id: 'passwordSaveBtn',
+    valid: () => !!document.getElementById('oldPassword').value
+      && !!document.getElementById('newPassword').value
+      && document.getElementById('newPassword').value === document.getElementById('confirmPassword').value
+      && document.getElementById('newPassword').value !== document.getElementById('oldPassword').value,
+  }], () => true);
+  saveChanges.saved('password', { changed: false });
+  document.addEventListener('input', () => saveChanges.refreshAll());
+  document.addEventListener('change', () => saveChanges.refreshAll());
+}
+
+async function saveSection(name, submitted, operation) {
+  if (!saveChanges.begin(name)) return null;
+  try {
+    const result = await operation();
+    if (result) saveChanges.saved(name, submitted);
+    return result;
+  } catch (error) {
+    showAlert('Unable to confirm the save. Your changes are still unsaved; check before retrying.', 'danger');
+    return null;
+  } finally {
+    saveChanges.end(name);
+  }
+}
+
 function applyRoleRestrictions() {
   if (!CAN_MANAGE) {
     document.querySelectorAll('.manage-only').forEach(el => {
@@ -101,10 +278,10 @@ async function changePassword() {
     return;
   }
 
-  const data = await apiPost('/api/auth/change-password', {
+  const data = await saveSection('password', { changed: false }, () => apiPost('/api/auth/change-password', {
     old_password: oldPwd,
     new_password: newPwd,
-  });
+  }));
 
   if (data) {
     alertEl.className = 'alert alert-success';
@@ -113,6 +290,7 @@ async function changePassword() {
     document.getElementById('oldPassword').value = '';
     document.getElementById('newPassword').value = '';
     document.getElementById('confirmPassword').value = '';
+    saveChanges.refresh('password');
   }
 }
 
@@ -207,12 +385,15 @@ async function rebootLte() {
 // ============================================================================
 
 async function loadWatchdogTargets() {
+  if (saveChanges.keepEdits('watchdog')) return;
+  const version = saveChanges.loading('watchdog');
   const data = await apiGet('/api/lte/watchdog');
-  if (!data) return;
+  if (!data || !saveChanges.current('watchdog', version)) return;
   const container = document.getElementById('watchdogTargets');
   container.innerHTML = '';
   (data.targets || []).forEach(ip => addWatchdogRow(ip));
   if ((data.targets || []).length === 0) addWatchdogRow('');
+  saveChanges.saved('watchdog');
 }
 
 function addWatchdogRow(value) {
@@ -222,10 +403,11 @@ function addWatchdogRow(value) {
   div.style.maxWidth = '350px';
   div.innerHTML = `
     <input type="text" class="form-control watchdog-ip" value="${escapeHtml(value || '')}" placeholder="e.g. 8.8.8.8 or https://google.com">
-    <button class="btn btn-outline-danger manage-only" type="button" onclick="this.closest('.input-group').remove()">Remove</button>
+    <button class="btn btn-outline-danger manage-only" type="button" onclick="this.closest('.input-group').remove(); saveChanges.refresh('watchdog')">Remove</button>
   `;
   container.appendChild(div);
   applyRoleRestrictions();
+  saveChanges.refresh('watchdog');
 }
 
 function addWatchdogTarget() {
@@ -233,13 +415,9 @@ function addWatchdogTarget() {
 }
 
 async function saveWatchdogTargets() {
-  const inputs = document.querySelectorAll('.watchdog-ip');
-  const targets = [];
-  inputs.forEach(el => {
-    const v = el.value.trim();
-    if (v) targets.push(v);
-  });
-  const data = await apiPost('/api/lte/watchdog', { targets });
+  const submitted = watchdogValues();
+  const data = await saveSection('watchdog', submitted,
+    () => apiPost('/api/lte/watchdog', submitted));
   if (data) showAlert(data.message, 'success');
 }
 
@@ -255,8 +433,11 @@ function toggleRtuMethod() {
 }
 
 async function loadRtuConfig() {
+  if (['network', 'server', 'location'].some(name => saveChanges.keepEdits(name))) return;
+  const versions = ['network', 'server', 'location'].map(name => saveChanges.loading(name));
   const data = await apiGet('/api/rtu/config');
-  if (!data) return;
+  if (!data || !['network', 'server', 'location'].every(
+    (name, index) => saveChanges.current(name, versions[index]))) return;
 
   if (data.method === 'manual') {
     document.getElementById('rtuStatic').checked = true;
@@ -272,6 +453,7 @@ async function loadRtuConfig() {
   document.getElementById('rtuDns').value = data.dns || '';
   document.getElementById('rtuServerIp').value = data.server_ip || '';
   document.getElementById('rtuLocation').value = data.location || '';
+  ['network', 'server', 'location'].forEach(name => saveChanges.saved(name));
 }
 
 let rtuNetworkSaving = false;
@@ -290,15 +472,9 @@ function dismissRtuNetworkNotice() {
 
 async function saveRtuNetwork() {
   if (!CAN_MANAGE || rtuNetworkSaving) return;
+  if (!saveChanges.begin('network')) return;
   const isStatic = document.getElementById('rtuStatic').checked;
-  const body = { method: isStatic ? 'manual' : 'auto' };
-
-  if (isStatic) {
-    body.ip_address = document.getElementById('rtuIp').value.trim();
-    body.subnet = document.getElementById('rtuSubnet').value.trim() || '24';
-    body.gateway = document.getElementById('rtuGateway').value.trim();
-    body.dns = document.getElementById('rtuDns').value.trim();
-  }
+  const body = rtuNetworkValues();
 
   const reconnect = isStatic
     ? `Open the gateway at ${body.ip_address} using the same web UI port.`
@@ -328,6 +504,7 @@ async function saveRtuNetwork() {
       showAlert(data.error || 'Unable to save network settings', 'danger');
       return;
     }
+    saveChanges.saved('network', body);
     showRtuNetworkNotice('IP Address changed... Please revert to the new IP.', reconnect);
   } catch (error) {
     showRtuNetworkNotice('IP Address change requested... Please revert to the new IP.',
@@ -337,20 +514,23 @@ async function saveRtuNetwork() {
     clearTimeout(timeout);
     rtuNetworkSaving = false;
     returnButton.disabled = false;
+    saveChanges.end('network');
   }
 }
 
 async function saveRtuServer() {
-  const data = await apiPost('/api/rtu/server', {
+  const submitted = {
     server_ip: document.getElementById('rtuServerIp').value.trim(),
-  });
+  };
+  const data = await saveSection('server', submitted, () => apiPost('/api/rtu/server', submitted));
   if (data) showAlert(data.message, 'success');
 }
 
 async function saveRtuLocation() {
-  const data = await apiPost('/api/rtu/location', {
+  const submitted = {
     location: document.getElementById('rtuLocation').value.trim(),
-  });
+  };
+  const data = await saveSection('location', submitted, () => apiPost('/api/rtu/location', submitted));
   if (data) showAlert(data.message, 'success');
 }
 
@@ -429,19 +609,24 @@ async function saveSyncServerTime() {
 // ============================================================================
 
 async function loadAutoRead() {
+  if (saveChanges.keepEdits('autoread')) return;
+  const version = saveChanges.loading('autoread');
   const data = await apiGet('/api/amr/autoread');
-  if (!data) return;
+  if (!data || !saveChanges.current('autoread', version)) return;
   document.getElementById('autoReadEnable').checked = data.enabled;
   document.getElementById('autoReadInterval').value = data.interval || '30';
   document.getElementById('autoReadLabel').textContent =
     data.enabled ? 'Enabled' : 'Disabled';
+  saveChanges.saved('autoread');
 }
 
 async function saveAutoRead() {
   const enable = document.getElementById('autoReadEnable').checked;
   const interval = document.getElementById('autoReadInterval').value;
 
-  const data = await apiPost('/api/amr/autoread', { enable, interval });
+  const submitted = { enable, interval: interval.trim() };
+  const data = await saveSection('autoread', submitted,
+    () => apiPost('/api/amr/autoread', submitted));
   if (data) {
     showAlert(data.message, 'success');
     document.getElementById('autoReadLabel').textContent =
@@ -497,6 +682,7 @@ function renderMeterTable(meters) {
   });
 
   applyRoleRestrictions();
+  saveChanges.saved('meters');
 }
 
 function escapeHtml(str) {
@@ -529,6 +715,7 @@ function addMeterRow() {
   `;
   tbody.appendChild(tr);
   applyRoleRestrictions();
+  saveChanges.refresh('meters');
 }
 
 function editMeterRow(btn) {
@@ -542,6 +729,7 @@ function deleteMeterRow(btn) {
   const tr = btn.closest('tr');
   tr.remove();
   renumberMeterTable();
+  saveChanges.refresh('meters');
 }
 
 function renumberMeterTable() {
@@ -565,15 +753,17 @@ function collectMeters() {
 }
 
 async function saveMeters() {
-  const meters = collectMeters();
-  const data = await apiPost('/api/amr/meters', { meters });
+  const submitted = { meters: collectMeters() };
+  const data = await saveSection('meters', submitted, () => apiPost('/api/amr/meters', submitted));
   if (data) showAlert(data.message, 'success');
 }
 
 async function loadMeters() {
+  if (saveChanges.keepEdits('meters')) return;
+  const version = saveChanges.loading('meters');
   await loadMeterConfigs();
   const data = await apiGet('/api/amr/meters');
-  if (data) {
+  if (data && saveChanges.current('meters', version)) {
     renderMeterTable(data.meters || []);
     if (data.truncated) showAlert('meter_batch.csv exceeded 32 entries. Only the first 32 were kept.', 'warning');
   }
@@ -583,9 +773,11 @@ async function loadMeters() {
 // AMR Setting - Config File Editor
 // ============================================================================
 
-async function loadConfigList() {
+async function loadConfigList(force = false) {
+  if (!force && saveChanges.keepEdits('config')) return;
+  const version = saveChanges.sections.get('config')?.version;
   const data = await apiGet('/api/amr/configs');
-  if (!data) return;
+  if (!data || !saveChanges.current('config', version)) return;
 
   const sel = document.getElementById('cfgFileSelect');
   const current = sel.value;
@@ -597,19 +789,36 @@ async function loadConfigList() {
     if (f === current) opt.selected = true;
     sel.appendChild(opt);
   });
+  if (current && !(data.configs || []).includes(current)) {
+    sel.value = '';
+    document.getElementById('cfgEditor').value = '';
+    saveChanges.saved('config', { filename: '', content: '' });
+  }
 }
 
+let configLoadRun = 0;
+
 async function loadConfigFile() {
+  const run = ++configLoadRun;
   const filename = document.getElementById('cfgFileSelect').value;
   const editor = document.getElementById('cfgEditor');
+  saveChanges.loading('config');
+  editor.value = '';
 
   if (!filename) {
-    editor.value = '';
+    editor.readOnly = false;
+    saveChanges.saved('config', { filename: '', content: '' });
     return;
   }
 
+  editor.readOnly = true;
   const data = await apiGet(`/api/amr/configs/${encodeURIComponent(filename)}`);
-  if (data) editor.value = data.content || '';
+  if (run !== configLoadRun || document.getElementById('cfgFileSelect').value !== filename) return;
+  if (data) {
+    editor.value = data.content || '';
+    editor.readOnly = false;
+    saveChanges.saved('config', { filename, content: editor.value });
+  }
 }
 
 async function saveConfigFile() {
@@ -619,30 +828,40 @@ async function saveConfigFile() {
     return;
   }
 
-  const content = document.getElementById('cfgEditor').value;
-  const data = await apiPost(`/api/amr/configs/${encodeURIComponent(filename)}`, { content });
+  const submitted = configValues();
+  const data = await saveSection('config', submitted,
+    () => apiPost(`/api/amr/configs/${encodeURIComponent(filename)}`, { content: submitted.content }));
   if (data) showAlert(data.message, 'success');
 }
 
 async function saveConfigFileAs() {
+  const state = saveChanges.sections.get('config');
+  if (state && (state.loading || state.busy || !saveChanges.dirty('config') || !CAN_MANAGE)) return;
   const newName = prompt('Enter new filename (e.g. meter01.cfg):');
   if (!newName) return;
 
-  const content = document.getElementById('cfgEditor').value;
-  const data = await apiPost('/api/amr/configs', { filename: newName, content });
+  const submitted = { filename: newName, content: document.getElementById('cfgEditor').value };
+  const data = await saveSection('config', submitted, async () => {
+    const result = await apiPost('/api/amr/configs', submitted);
+    if (!result) return null;
+    submitted.filename = result.filename || newName;
+    const select = document.getElementById('cfgFileSelect');
+    const option = document.createElement('option');
+    option.value = submitted.filename;
+    option.textContent = submitted.filename;
+    select.appendChild(option);
+    select.value = submitted.filename;
+    return result;
+  });
   if (data) {
     showAlert(data.message, 'success');
-    await loadConfigList();
-    // Select the new file
-    if (data.filename) {
-      document.getElementById('cfgFileSelect').value = data.filename;
-    }
     // Refresh meter config dropdowns too
     await loadMeterConfigs();
   }
 }
 
 async function deleteConfigFile() {
+  if (saveChanges.sections.get('config')?.busy) return;
   const filename = document.getElementById('cfgFileSelect').value;
   if (!filename) {
     showAlert('No file selected', 'warning');
@@ -651,12 +870,21 @@ async function deleteConfigFile() {
 
   if (!confirm(`Delete ${filename}? This cannot be undone.`)) return;
 
-  const data = await apiDelete(`/api/amr/configs/${encodeURIComponent(filename)}`);
-  if (data) {
-    showAlert(data.message, 'success');
-    document.getElementById('cfgEditor').value = '';
-    await loadConfigList();
-    await loadMeterConfigs();
+  const state = saveChanges.sections.get('config');
+  if (state) { state.busy = true; saveChanges.refresh('config'); }
+  try {
+    const data = await apiDelete(`/api/amr/configs/${encodeURIComponent(filename)}`);
+    if (data) {
+      showAlert(data.message, 'success');
+      document.getElementById('cfgFileSelect').value = '';
+      document.getElementById('cfgEditor').value = '';
+      document.getElementById('cfgEditor').readOnly = false;
+      saveChanges.saved('config', { filename: '', content: '' });
+      await loadConfigList(true);
+      await loadMeterConfigs();
+    }
+  } finally {
+    saveChanges.end('config');
   }
 }
 
@@ -963,6 +1191,7 @@ async function setConnectionEnabled(enabled) {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
+  initializeSaveChanges();
   // Update theme icon to match current theme
   updateThemeIcon();
 

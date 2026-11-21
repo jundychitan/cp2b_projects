@@ -139,6 +139,23 @@ files does not update an older installed unit. Verify with
 `sudo journalctl -u amr_gateway_webui -n 20 --no-pager`.
 
 ## Tab Details
+### Save buttons
+Save buttons are disabled until their own section has loaded and contains unsaved
+changes. Network settings, Server IP, Location, Internet Watchdog, Auto Read,
+Meter Batch File, Config File Editor, and Change Password are tracked separately.
+Reverting to the saved values disables Save again. Saves disable their buttons
+while the request runs; success establishes the submitted values as the new
+baseline, while failures keep the changes available for retry. Edits made during
+a settings save remain unsaved if they differ from the submitted values.
+Switching tabs does not reload over unsaved settings. Reloading the browser still
+discards unsaved changes. Meter row additions/deletions count as changes; clicking
+Edit without changing data does not. Successful CSV upload resets the meter
+baseline to the uploaded saved rows.
+Config Save requires a selected, loaded file and edited content. Save As requires
+changed content or a newly typed draft. Password Save requires the current
+password and matching, nonempty new-password fields, different from the current
+password. Existing read-only restrictions and automatic Sync Server Time saving
+are unchanged.
 
 The navbar shows **Logged in as: &lt;username&gt;** without repeating the role.
 **Device time** displays the gateway's local date/time and timezone, ticking
@@ -377,6 +394,7 @@ node tests/test_sync_server_time_ui.js
 node tests/test_meter_limit_ui.js
 node tests/test_meter_transfer_ui.js
 node tests/test_machine_clock_ui.js
+node tests/test_save_changes_ui.js
 ```
 
 Tests use temporary state and mocked hardware, package, and service operations.

@@ -32,7 +32,7 @@
 <div class="card mt-3">
   <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
     <h5 class="mb-0">Network Setting</h5>
-    <button type="button" class="btn btn-primary btn-sm manage-only" onclick="saveRtuNetwork()">Save Network</button>
+    <button type="button" class="btn btn-primary btn-sm manage-only" id="rtuNetworkSaveBtn" onclick="saveRtuNetwork()" disabled>Save Network</button>
   </div>
   <div class="card-body">
     <!-- IP Method Toggle -->
@@ -96,8 +96,8 @@
   <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
     <h5 class="mb-0">AMR Server Setting</h5>
     <div class="d-flex flex-wrap gap-2">
-      <button type="button" class="btn btn-primary btn-sm manage-only" onclick="saveRtuServer()">Save Server IP</button>
-      <button type="button" class="btn btn-primary btn-sm manage-only" onclick="saveRtuLocation()">Save Location</button>
+      <button type="button" class="btn btn-primary btn-sm manage-only" id="rtuServerSaveBtn" onclick="saveRtuServer()" disabled>Save Server IP</button>
+      <button type="button" class="btn btn-primary btn-sm manage-only" id="rtuLocationSaveBtn" onclick="saveRtuLocation()" disabled>Save Location</button>
     </div>
   </div>
   <div class="card-body">

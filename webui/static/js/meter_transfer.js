@@ -74,6 +74,7 @@ function validateMeterBatchCsv(text) {
 
 function chooseMeterBatchUpload() {
   if (!CAN_MANAGE || meterUploadBusy) return;
+  if (typeof saveChanges !== 'undefined' && saveChanges.sections.get('meters')?.busy) return;
   const input = document.getElementById('meterBatchUploadFile');
   input.value = '';
   input.click();
@@ -81,10 +82,12 @@ function chooseMeterBatchUpload() {
 
 async function uploadMeterBatch() {
   if (!CAN_MANAGE || meterUploadBusy) return;
+  if (typeof saveChanges !== 'undefined' && saveChanges.sections.get('meters')?.busy) return;
   const input = document.getElementById('meterBatchUploadFile');
   const file = input.files[0];
   if (!file) return;
   meterUploadBusy = true;
+  if (typeof saveChanges !== 'undefined') saveChanges.refresh('meters');
   const button = document.getElementById('meterBatchUploadBtn');
   const controls = ['meterBatchUploadFile', 'meterBatchUploadBtn', 'meterBatchAddBtn', 'meterBatchSaveBtn']
     .map(id => document.getElementById(id));
@@ -133,6 +136,7 @@ async function uploadMeterBatch() {
     controls.forEach(control => { control.disabled = false; });
     button.textContent = 'Upload';
     input.value = '';
+    if (typeof saveChanges !== 'undefined') saveChanges.refresh('meters');
   }
 }
 
