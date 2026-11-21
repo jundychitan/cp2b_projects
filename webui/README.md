@@ -280,6 +280,30 @@ template tree when updating.
 - Removed unmanaged start/stop/restart API routes. Manually launched copies and
   alternative schedulers are outside this control.
 
+### Diagnostic logs
+- **Check CM Status** reads the last 100 lines of
+  `/var/log/tcp_client/connection_manager.log`, not `journalctl`. This is the
+  dedicated log configured by `tcp_client/install.sh` with `--log-file`.
+  Deployments using a different log path must align the server-controlled
+  `DIAGNOSTIC_LOGS` setting in `blueprints/diagnostic.py`; there is no automatic
+  fallback to the shared system journal.
+- **Ping Logs** reads the last 100 lines of `/var/log/internet-watchdog.log`.
+- **Delete** beside each viewer is available only to admin/dec. Explicit
+  confirmation permanently clears that active file and removes its known
+  rotated copies: CM `.1`–`.3`, Ping `.1`–`.5`. Only the selected log family is
+  touched. Active files are truncated in place so existing logging handles
+  continue working; new entries may appear immediately.
+- **Shared system journal history is retained**, including CM/watchdog messages
+  copied to the journal. This action is log-file deletion, not secure erasure of
+  all copies or backups. It does not stop/restart services or change logging.
+- Requests require login, management permissions, a session `X-CSRF-Token`, and
+  JSON `{"confirm": true}`. Only `cm` and `ping` source identifiers are accepted,
+  never client-supplied file paths. Linked/nonregular files and detected rotation
+  races are refused. Partial failures report that data may already be deleted;
+  refresh before retrying. Deletion is never retried automatically.
+- Log viewing and deletion share a busy guard. Successful deletion removes old
+  output from the display. **Clear** still clears the display only, not files.
+
 ### Device Reboot
 - Admin/dec confirmation sends a session CSRF token and schedules reboot after
   five seconds using fixed `systemd-run` arguments.
@@ -370,13 +394,16 @@ amr_gateway_webui/
 | POST   | `/api/connection/toggle`        | admin + CSRF | Enable/start or disable/stop |
 | POST   | `/api/diagnostic/reboot`        | admin/dec + CSRF | Schedule reboot and log out |
 | POST   | `/api/diagnostic/lte-check`     | any    | Query detected modem            |
+| POST   | `/api/diagnostic/cm-status`     | any    | Read dedicated CM log file      |
+| POST   | `/api/diagnostic/ping-logs`     | any    | Read watchdog Ping log file     |
+| POST   | `/api/diagnostic/logs/<source>/delete` | admin/dec + CSRF | Confirmed deletion of fixed CM/Ping log files and known rotations |
 | GET    | `/rebooting`                    | public | Standalone reboot monitor       |
 | GET    | `/api/diagnostic/ready`         | public | Uncached readiness response     |
 | GET    | `/api/diagnostic/time`          | any    | Uncached device time and timezone |
 | POST   | `/api/auth/change-password`     | any    | Change own password             |
 | POST   | `/api/auth/reset-password`      | admin + CSRF | Reset dec/amr to 1234       |
 
-Reboot, Connection Manager toggle, admin password reset, Sync Server Time, CSV upload, and SMS deletion use session CSRF tokens;
+Reboot, Connection Manager toggle, admin password reset, Sync Server Time, CSV upload, SMS deletion, and diagnostic log deletion use session CSRF tokens;
 this does not imply CSRF coverage for every legacy endpoint.
 
 ## Validation
@@ -389,6 +416,7 @@ node tests/test_connection_ui.js
 node tests/test_reboot_ui.js
 node tests/test_login_ui.js
 node tests/test_diagnostic_ui.js
+node tests/test_diagnostic_logs_ui.js
 node tests/test_password_reset_ui.js
 node tests/test_sync_server_time_ui.js
 node tests/test_meter_limit_ui.js

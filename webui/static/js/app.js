@@ -1019,9 +1019,65 @@ async function diagRoutes() {
 }
 
 async function diagCheckCM() {
-  appendDiagOutput('> journalctl -u connection-manager.service -e\n');
-  const data = await apiPost('/api/diagnostic/cm-status', {});
-  if (data) appendDiagOutput(data.output);
+  await readDiagnosticLogs('/api/diagnostic/cm-status',
+    '> tail -n 100 /var/log/tcp_client/connection_manager.log\n');
+}
+
+let diagnosticLogsBusy = false;
+
+function setDiagnosticLogsBusy(busy) {
+  diagnosticLogsBusy = busy;
+  for (const id of ['diagCmLogsBtn', 'diagPingLogsBtn', 'diagCmDeleteBtn', 'diagPingDeleteBtn']) {
+    const button = document.getElementById(id);
+    if (button) button.disabled = busy || (id.includes('Delete') && !CAN_MANAGE);
+  }
+}
+
+async function readDiagnosticLogs(url, command) {
+  if (diagnosticLogsBusy) return;
+  setDiagnosticLogsBusy(true);
+  try {
+    appendDiagOutput(command);
+    const data = await apiPost(url, {});
+    if (data) appendDiagOutput(data.output);
+  } catch (error) {
+    showAlert('Unable to read diagnostic logs. Please retry.', 'danger');
+  } finally {
+    setDiagnosticLogsBusy(false);
+  }
+}
+
+async function diagDeleteLogs(source) {
+  if (!CAN_MANAGE || diagnosticLogsBusy || !['cm', 'ping'].includes(source)) return;
+  const name = source === 'cm' ? 'CM' : 'Ping';
+  const button = document.getElementById(source === 'cm' ? 'diagCmDeleteBtn' : 'diagPingDeleteBtn');
+  if (!button || !confirm(`Permanently delete ${name} log-file history and its rotated copies? `
+      + 'This cannot be undone. Shared system journal history will remain. '
+      + 'The service will keep running and may write new entries.')) return;
+  setDiagnosticLogsBusy(true);
+  try {
+    const response = await fetch(`/api/diagnostic/logs/${source}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': button.dataset.csrfToken },
+      body: JSON.stringify({ confirm: true }),
+      cache: 'no-store',
+    });
+    if (response.redirected || response.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      showAlert(data.error || 'Unable to delete logs. Refresh before retrying.', 'danger');
+      return;
+    }
+    document.getElementById('diagOutput').textContent = data.message;
+    showAlert(data.message, 'success');
+  } catch (error) {
+    showAlert('Delete result is unknown. Log data may have been deleted; refresh before retrying.', 'danger');
+  } finally {
+    setDiagnosticLogsBusy(false);
+  }
 }
 
 let diagLtePresent = false;
@@ -1071,9 +1127,8 @@ async function diagLteCheck() {
 }
 
 async function diagPingLogs() {
-  appendDiagOutput('> tail -n 100 /var/log/internet-watchdog.log\n');
-  const data = await apiPost('/api/diagnostic/ping-logs', {});
-  if (data) appendDiagOutput(data.output);
+  await readDiagnosticLogs('/api/diagnostic/ping-logs',
+    '> tail -n 100 /var/log/internet-watchdog.log\n');
 }
 
 function clearDiagnostic() {
