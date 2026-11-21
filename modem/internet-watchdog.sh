@@ -10,7 +10,7 @@ SETUP_LOCK="/run/lte-ecm.lock"
 SETUP_STAMP="/run/lte-ecm.generation"
 
 load_targets() {
-    TARGETS=()
+TARGETS=("google.com")
     local line
     if [ -f "$TARGETS_FILE" ]; then
         while IFS= read -r line || [[ -n "$line" ]]; do
@@ -21,7 +21,7 @@ load_targets() {
         done < "$TARGETS_FILE"
     fi
     if [ ${#TARGETS[@]} -eq 0 ]; then
-        TARGETS=("${DEFAULT_TARGETS[@]}")
+TARGETS=("google.com")
     fi
 }
 
