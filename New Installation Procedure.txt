@@ -1,6 +1,9 @@
-CP2B IOT Gateway New INstallation
+CP2B IOT Gateway New Installation
+
+1. Disable the LTE module as this may affect internet connection
 
 1. Update your package lists
+    sudo apt clean
     sudo apt update
 
 2. install php
